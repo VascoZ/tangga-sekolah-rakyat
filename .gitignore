@@ -21,6 +21,10 @@ npm-debug.log*
 
 # Vercel
 .vercel/
+skills-lock.json
+/backend/.agents/
+/backend/.claude/
+/backend/.gitignore
 
 # OS / editor
 .DS_Store

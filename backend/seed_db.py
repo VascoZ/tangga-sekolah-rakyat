@@ -6,11 +6,11 @@ Seed database with synthetic data for TANGGA MVP
 import asyncio
 import random
 from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
 
-from app.config import settings
+from app.database import engine
 from app.models import (
     Base, Sekolah, Guru, Kelas, Siswa, PosisiTangga,
     AsesmenSiswa, JawabanItem, RiwayatTangga, BahanAjar,
@@ -47,7 +47,6 @@ DISTRIBUSI_AWAL_LITERASI = {
 
 async def seed_database():
     """Seed database with synthetic data"""
-    engine = create_async_engine(settings.DATABASE_URL, echo=True)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     
     async with engine.begin() as conn:

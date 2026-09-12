@@ -3,11 +3,14 @@ Database connection for TANGGA
 """
 
 import os
+from urllib.parse import urlsplit
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 from app.config import settings
+
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "db"}  # "db" = docker-compose service name
 
 # On Vercel (or any serverless host) each invocation may be a fresh process,
 # and a pooled connection can be resumed stale after the function freezes.
@@ -16,6 +19,12 @@ from app.config import settings
 _engine_kwargs = {"echo": settings.DEBUG, "future": True}
 if os.getenv("VERCEL"):
     _engine_kwargs["poolclass"] = NullPool
+
+# Managed Postgres (Neon, Supabase, ...) requires TLS; local/docker-compose
+# Postgres has none configured. asyncpg wants a plain `ssl` connect kwarg
+# (not a sslmode=... URL param, which it rejects outright - see config.py).
+if (urlsplit(settings.DATABASE_URL).hostname or "") not in _LOCAL_HOSTS:
+    _engine_kwargs["connect_args"] = {"ssl": True}
 
 # Create async engine
 engine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs)
