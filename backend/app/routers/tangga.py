@@ -15,11 +15,84 @@ from app.schemas import (
     PengelompokanResponse,
     DashboardKelasResponse,
     SebaranTangga,
+    SiswaCreate,
+    SiswaRosterItem,
 )
 from app.tangga.definisi import get_tangga_label, TANGGA_LITERASI, TANGGA_NUMERASI
 from app.tangga.penempatan import tentukan_kelompok
 
 router = APIRouter()
+
+
+@router.get("/kelas/{kelas_id}/siswa", response_model=List[SiswaRosterItem])
+async def get_roster_kelas(
+    kelas_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Daftar lengkap siswa di satu kelas beserta posisi tangganya."""
+    result = await db.execute(select(Kelas).where(Kelas.id == kelas_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Kelas tidak ditemukan")
+
+    result = await db.execute(
+        select(Siswa, PosisiTangga)
+        .outerjoin(PosisiTangga, Siswa.id == PosisiTangga.siswa_id)
+        .where(Siswa.kelas_id == kelas_id, Siswa.status_aktif == True)  # noqa: E712
+        .order_by(Siswa.id)
+    )
+
+    return [
+        SiswaRosterItem(
+            id=siswa.id,
+            kode=siswa.kode,
+            nama=siswa.nama,
+            tangga_literasi=posisi.tangga_literasi if posisi else None,
+            tangga_numerasi=posisi.tangga_numerasi if posisi else None,
+            tangga_literasi_label=get_tangga_label("LITERASI", posisi.tangga_literasi) if posisi and posisi.tangga_literasi is not None else "Belum Asesmen",
+            tangga_numerasi_label=get_tangga_label("NUMERASI", posisi.tangga_numerasi) if posisi and posisi.tangga_numerasi is not None else "Belum Asesmen",
+            pekan_ke_literasi=posisi.pekan_ke_literasi if posisi else 0,
+            pekan_ke_numerasi=posisi.pekan_ke_numerasi if posisi else 0,
+            tgl_terakhir_literasi=posisi.tgl_terakhir_literasi if posisi else None,
+            tgl_terakhir_numerasi=posisi.tgl_terakhir_numerasi if posisi else None,
+        )
+        for siswa, posisi in result.all()
+    ]
+
+
+@router.post("/siswa", response_model=SiswaRosterItem, status_code=201)
+async def create_siswa(
+    data: SiswaCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mendaftarkan siswa baru ke satu kelas, dengan kode SR-<sekolah>-<urut> otomatis."""
+    result = await db.execute(select(Kelas).where(Kelas.id == data.kelas_id))
+    kelas = result.scalar_one_or_none()
+    if not kelas:
+        raise HTTPException(status_code=404, detail="Kelas tidak ditemukan")
+
+    prefix = f"SR-{kelas.sekolah_id:03d}-"
+    result = await db.execute(
+        select(Siswa.kode).where(Siswa.kode.like(f"{prefix}%"))
+    )
+    existing_seqs = [
+        int(kode.split("-")[-1]) for kode in result.scalars().all()
+        if kode.split("-")[-1].isdigit()
+    ]
+    next_seq = (max(existing_seqs) + 1) if existing_seqs else 1
+    kode = f"{prefix}{next_seq:04d}"
+
+    siswa = Siswa(
+        kode=kode,
+        nama=data.nama.strip(),
+        kelas_id=data.kelas_id,
+        jenjang=data.jenjang,
+        status_aktif=True,
+    )
+    db.add(siswa)
+    await db.commit()
+    await db.refresh(siswa)
+
+    return SiswaRosterItem(id=siswa.id, kode=siswa.kode, nama=siswa.nama)
 
 
 @router.get("/siswa/{siswa_id}", response_model=PosisiTanggaResponse)

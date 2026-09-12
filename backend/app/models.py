@@ -55,6 +55,7 @@ class Siswa(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     kode = Column(String(20), unique=True, index=True)  # SR-001-0001
+    nama = Column(String(100), nullable=True)
     kelas_id = Column(Integer, ForeignKey("kelas.id"))
     jenjang = Column(String(10))
     tgl_masuk = Column(DateTime, server_default=func.now())

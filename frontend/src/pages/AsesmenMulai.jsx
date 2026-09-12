@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAsesmenStore } from '../lib/store'
-import { DEMO_SISWA_KELAS_A } from '../lib/demoData'
+import { tanggaApi } from '../lib/api'
+import { useAuthStore } from '../lib/auth'
+import { toRosterView } from '../lib/roster'
 import { Search } from 'lucide-react'
 import GuruShell from '../components/GuruShell'
 import EmptyState from '../components/EmptyState'
@@ -15,12 +17,22 @@ const TANGGA_LABELS = {
 function AsesmenMulai() {
   const navigate = useNavigate()
   const { mulaiAsesmen, loading } = useAsesmenStore()
+  const { user } = useAuthStore()
   const toast = useToast()
   const [search, setSearch] = useState('')
   const [selectedSiswa, setSelectedSiswa] = useState(null)
   const [jenis, setJenis] = useState('LITERASI')
+  const [roster, setRoster] = useState(null)
 
-  const filteredSiswa = DEMO_SISWA_KELAS_A.filter(s =>
+  useEffect(() => {
+    const kelasId = user?.kelas?.id || 1
+    tanggaApi.getRosterKelas(kelasId)
+      .then((data) => setRoster(data.map(toRosterView)))
+      .catch((err) => toast.error(`Gagal memuat daftar siswa: ${err.message}`))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const filteredSiswa = (roster || []).filter(s =>
     s.nama.toLowerCase().includes(search.toLowerCase()) ||
     s.kode.toLowerCase().includes(search.toLowerCase())
   )
@@ -53,7 +65,9 @@ function AsesmenMulai() {
         </div>
 
         {/* Siswa List */}
-        {filteredSiswa.length === 0 ? (
+        {roster === null ? (
+          <div className="text-center py-16 text-sr-400">Memuat daftar siswa...</div>
+        ) : filteredSiswa.length === 0 ? (
           <EmptyState icon={Search} title="Siswa tidak ditemukan" description="Coba kata kunci lain." />
         ) : (
         <div className="bg-white rounded-xl shadow-card mb-6 overflow-hidden">

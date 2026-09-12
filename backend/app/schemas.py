@@ -34,11 +34,14 @@ class StatusStagnasi(str, Enum):
 # === SISWA ===
 class SiswaBase(BaseModel):
     kode: str
+    nama: Optional[str] = None
     jenjang: str
 
 
-class SiswaCreate(SiswaBase):
+class SiswaCreate(BaseModel):
+    nama: str
     kelas_id: int
+    jenjang: str
 
 
 class SiswaResponse(SiswaBase):
@@ -56,6 +59,20 @@ class SiswaWithTangga(SiswaResponse):
     tangga_numerasi: Optional[int] = None
     pekan_ke_literasi: int = 0
     pekan_ke_numerasi: int = 0
+
+
+class SiswaRosterItem(BaseModel):
+    id: int
+    kode: str
+    nama: Optional[str] = None
+    tangga_literasi: Optional[int] = None
+    tangga_numerasi: Optional[int] = None
+    tangga_literasi_label: str = "Belum Asesmen"
+    tangga_numerasi_label: str = "Belum Asesmen"
+    pekan_ke_literasi: int = 0
+    pekan_ke_numerasi: int = 0
+    tgl_terakhir_literasi: Optional[datetime] = None
+    tgl_terakhir_numerasi: Optional[datetime] = None
 
 
 # === ASESMEN ===

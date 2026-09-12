@@ -99,15 +99,24 @@ async def seed_database():
         # Create siswa with posisi tangga
         siswa_list = []
         posisi_list = []
-        
+
+        # Named only for Kelas A (matches the frontend's demo data, kode-for-kode);
+        # Kelas B/C stay nama=None - nothing in the app names them today.
+        NAMA_KELAS_A = [
+            'Ahmad', 'Budi', 'Citra', 'Dewi', 'Eko', 'Fajar', 'Gita', 'Hadi', 'Irma', 'Joko',
+            'Galih', 'Lina', 'Maman', 'Nia', 'Oman', 'Putri', 'Qori', 'Indah', 'Sari', 'Tono',
+            'Umar', 'Rudi', 'Wati', 'Anton', 'Roni', 'Susi', 'Tomi', 'Tini', 'Bayu', 'Yusuf',
+        ]
+
         siswa_counter = 0
         for kelas_idx, kelas in enumerate(kelas_list):
             for i in range(NUM_SISWA_PER_KELAS):
                 siswa_counter += 1
                 kode = f"SR-{sekolah.id:03d}-{siswa_counter:04d}"
-                
+
                 siswa = Siswa(
                     kode=kode,
+                    nama=NAMA_KELAS_A[i] if kelas_idx == 0 else None,
                     kelas_id=kelas.id,
                     jenjang=kelas.jenjang,
                     tgl_masuk=datetime(2026, 7, 14),

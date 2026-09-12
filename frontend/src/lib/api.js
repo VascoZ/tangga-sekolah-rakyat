@@ -52,19 +52,28 @@ export const asesmenApi = {
 
 // Tangga
 export const tanggaApi = {
-  getSiswa: (siswaId) => 
+  getSiswa: (siswaId) =>
     fetchApi(`/tangga/siswa/${siswaId}`),
-  
-  getKelas: (kelasId) => 
+
+  getKelas: (kelasId) =>
     fetchApi(`/tangga/kelas/${kelasId}`),
-  
-  getSekolah: (sekolahId) => 
+
+  getSekolah: (sekolahId) =>
     fetchApi(`/tangga/sekolah/${sekolahId}`),
-  
+
   getAgregat: (params = {}) => {
     const query = new URLSearchParams(params).toString()
     return fetchApi(`/tangga/agregat${query ? `?${query}` : ''}`)
   },
+
+  getRosterKelas: (kelasId) =>
+    fetchApi(`/tangga/kelas/${kelasId}/siswa`),
+}
+
+// Siswa
+export const siswaApi = {
+  create: (nama, kelasId, jenjang) =>
+    fetchApi('/tangga/siswa', { method: 'POST', body: JSON.stringify({ nama, kelas_id: kelasId, jenjang }) }),
 }
 
 // Bahan Ajar

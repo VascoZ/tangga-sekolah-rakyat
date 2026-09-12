@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, AlertTriangle } from 'lucide-react'
-import { DEMO_SISWA_KELAS_A } from '../lib/demoData'
+import { Search, AlertTriangle, Plus, X } from 'lucide-react'
+import { tanggaApi, siswaApi } from '../lib/api'
+import { useAuthStore } from '../lib/auth'
+import { toRosterView } from '../lib/roster'
 import GuruShell from '../components/GuruShell'
 import TanggaLegend from '../components/TanggaLegend'
 import EmptyState from '../components/EmptyState'
+import { useToast } from '../components/ToastProvider'
 
 const TANGGA_COLORS = ['badge-tangga-0', 'badge-tangga-1', 'badge-tangga-2', 'badge-tangga-3', 'badge-tangga-4', 'badge-tangga-5', 'badge-tangga-6']
 
@@ -28,26 +31,109 @@ function matchesFilter(siswa, filter) {
   }
 }
 
+function TambahSiswaModal({ kelasId, jenjang, onClose, onCreated }) {
+  const toast = useToast()
+  const [nama, setNama] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!nama.trim() || saving) return
+    setSaving(true)
+    try {
+      const created = await siswaApi.create(nama.trim(), kelasId, jenjang)
+      toast.success(`${created.nama} ditambahkan sebagai ${created.kode}.`)
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(`Gagal menambah siswa: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <form
+        onSubmit={handleSubmit}
+        className="relative bg-white rounded-xl shadow-modal p-6 w-full max-w-sm animate-slideUp"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-lg font-semibold text-sr-900">Tambah Siswa</h2>
+          <button type="button" onClick={onClose} aria-label="Tutup" className="text-sr-400 hover:text-sr-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <label className="block text-sm font-medium text-sr-700 mb-2">Nama Siswa</label>
+        <input
+          autoFocus
+          value={nama}
+          onChange={(e) => setNama(e.target.value)}
+          placeholder="cth. Fitri Handayani"
+          className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:border-sr-500 focus:ring-2 focus:ring-sr-200 outline-none mb-2"
+        />
+        <p className="text-xs text-sr-400 mb-4">
+          Kode siswa (SR-...) dan posisi tangga dibuat otomatis — siswa dimulai dari "Belum Asesmen".
+        </p>
+        <button
+          type="submit"
+          disabled={saving || !nama.trim()}
+          className="w-full bg-sr-700 text-white py-3 rounded-lg font-medium hover:bg-sr-900 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Menyimpan...' : 'Simpan'}
+        </button>
+      </form>
+    </div>
+  )
+}
+
 function DaftarSiswa() {
+  const { user } = useAuthStore()
+  const kelasId = user?.kelas?.id || 1
+  const jenjang = user?.kelas?.jenjang || 'SMA'
+  const toast = useToast()
+
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState(searchParams.get('cari') || '')
   const [filter, setFilter] = useState('semua')
+  const [roster, setRoster] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  const [showTambah, setShowTambah] = useState(false)
+
+  const loadRoster = () => {
+    setLoadError(null)
+    tanggaApi.getRosterKelas(kelasId)
+      .then((data) => setRoster(data.map(toRosterView)))
+      .catch((err) => setLoadError(err.message))
+  }
+
+  useEffect(loadRoster, [kelasId])
 
   const filtered = useMemo(() => {
+    if (!roster) return []
     const q = search.trim().toLowerCase()
-    return DEMO_SISWA_KELAS_A.filter((s) => {
+    return roster.filter((s) => {
       const matchesSearch = !q || s.nama.toLowerCase().includes(q) || s.kode.toLowerCase().includes(q)
       return matchesSearch && matchesFilter(s, filter)
     })
-  }, [search, filter])
+  }, [roster, search, filter])
 
-  const sudahAsesmen = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit !== null).length
-  const stagnanCount = DEMO_SISWA_KELAS_A.filter(s => s.stagnan > 0).length
+  const sudahAsesmen = roster ? roster.filter(s => s.tanggaLit !== null).length : 0
+  const stagnanCount = roster ? roster.filter(s => s.stagnan > 0).length : 0
 
   return (
     <GuruShell
       title="Daftar Siswa — Kelas A (SMA)"
-      subtitle={`${DEMO_SISWA_KELAS_A.length} siswa · ${sudahAsesmen} sudah asesmen · ${DEMO_SISWA_KELAS_A.length - sudahAsesmen} belum`}
+      subtitle={roster ? `${roster.length} siswa · ${sudahAsesmen} sudah asesmen · ${roster.length - sudahAsesmen} belum` : 'Memuat...'}
+      right={
+        <button
+          onClick={() => setShowTambah(true)}
+          className="flex items-center gap-1.5 bg-sr-700 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-sr-900 transition-colors"
+        >
+          <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Tambah Siswa</span>
+        </button>
+      }
     >
       {/* Search & Filter */}
       <div className="bg-white rounded-xl p-4 shadow-card mb-6">
@@ -75,13 +161,28 @@ function DaftarSiswa() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loadError && (
+        <EmptyState
+          icon={AlertTriangle}
+          title="Gagal memuat daftar siswa"
+          description={loadError}
+          action={<button onClick={loadRoster} className="text-sr-700 font-medium hover:text-sr-900">Coba lagi</button>}
+        />
+      )}
+
+      {!loadError && roster === null && (
+        <div className="text-center py-16 text-sr-400">Memuat daftar siswa...</div>
+      )}
+
+      {!loadError && roster !== null && filtered.length === 0 && (
         <EmptyState
           icon={Search}
           title="Tidak ada siswa yang cocok"
           description="Coba ubah kata kunci pencarian atau filter tangga."
         />
-      ) : (
+      )}
+
+      {!loadError && roster !== null && filtered.length > 0 && (
         <>
           {/* Desktop table */}
           <div className="hidden md:block bg-white rounded-xl shadow-card overflow-hidden">
@@ -183,9 +284,9 @@ function DaftarSiswa() {
         </>
       )}
 
-      {stagnanCount > 0 && (
+      {roster !== null && stagnanCount > 0 && (
         <div className="mt-4 text-center text-sm text-sr-500">
-          ⚠ {DEMO_SISWA_KELAS_A.length - sudahAsesmen} siswa belum asesmen · {stagnanCount} siswa stagnan
+          ⚠ {roster.length - sudahAsesmen} siswa belum asesmen · {stagnanCount} siswa stagnan
         </div>
       )}
 
@@ -195,9 +296,18 @@ function DaftarSiswa() {
           to="/guru/asesmen"
           className="block w-full bg-sr-700 text-white py-3 rounded-lg font-medium text-center hover:bg-sr-900 transition-colors"
         >
-          Mulai Asesmen Massal ({DEMO_SISWA_KELAS_A.length - sudahAsesmen} Siswa)
+          Mulai Asesmen
         </Link>
       </div>
+
+      {showTambah && (
+        <TambahSiswaModal
+          kelasId={kelasId}
+          jenjang={jenjang}
+          onClose={() => setShowTambah(false)}
+          onCreated={loadRoster}
+        />
+      )}
     </GuruShell>
   )
 }
