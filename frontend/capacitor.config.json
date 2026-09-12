@@ -1,0 +1,12 @@
+{
+  "appId": "com.tangga.sekolahrakyat",
+  "appName": "TANGGA",
+  "webDir": "dist",
+  "server": {
+    "url": "https://tangga-sekolah-rakyat.vercel.app",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
