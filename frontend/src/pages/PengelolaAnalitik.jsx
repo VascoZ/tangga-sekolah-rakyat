@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { TrendingUp, BarChart3, MapPin } from 'lucide-react'
+import { tanggaApi } from '../lib/api'
 import SidebarShell from '../components/SidebarShell'
 
 const NAV = [
@@ -8,6 +10,9 @@ const NAV = [
 ]
 
 function PengelolaAnalitik() {
+  const [agregat, setAgregat] = useState(null)
+  useEffect(() => { tanggaApi.getAgregat().then(setAgregat).catch(() => {}) }, [])
+
   return (
     <SidebarShell navItems={NAV} roleLabel="Pengelola Program" orgLabel="Kemensos RI" backTo="/pengelola">
       <div className="mb-4">
@@ -15,7 +20,7 @@ function PengelolaAnalitik() {
         <p className="text-sr-500 text-sm mt-1">Tren bulanan · Heatmap distribusi · Perbandingan antar provinsi</p>
       </div>
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8 text-sm text-blue-800">
-        ⓘ Proyeksi <strong>ilustratif</strong> skala nasional — pilot saat ini baru berjalan di 1 sekolah,
+        ⓘ Proyeksi <strong>ilustratif</strong> skala nasional — pilot saat ini baru berjalan di {agregat?.total_sekolah ?? '—'} sekolah,
         lihat Kelas A di menu Kepsek untuk data sungguhan.
       </div>
 

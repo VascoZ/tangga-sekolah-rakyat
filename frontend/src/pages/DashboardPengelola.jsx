@@ -18,7 +18,7 @@ function DashboardPengelola() {
     <SidebarShell navItems={NAV} roleLabel="Pengelola Program" orgLabel="Kemensos RI">
       <div className="mb-8">
         <h1 className="font-display text-2xl font-bold text-sr-900">Dashboard Pengelola — Program Sekolah Rakyat</h1>
-        <p className="text-sr-500 text-sm">Kemensos RI · TA 2026/2027 · Pilot: 1 sekolah aktif</p>
+        <p className="text-sr-500 text-sm">Kemensos RI · TA 2026/2027 · Pilot: {agregat?.total_sekolah ?? '—'} sekolah aktif</p>
       </div>
 
       {/* Top Stats - real counts from the one pilot school in the database */}
@@ -38,7 +38,7 @@ function DashboardPengelola() {
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8 text-sm text-blue-800">
-        ⓘ Angka di atas real dari database pilot (1 sekolah). Grafik multi-provinsi di bawah bersifat <strong>ilustratif</strong> —
+        ⓘ Angka di atas real dari database pilot ({agregat?.total_sekolah ?? '—'} sekolah). Grafik multi-provinsi di bawah bersifat <strong>ilustratif</strong> —
         proyeksi skala nasional yang belum punya data sungguhan di tahap pilot ini.
       </div>
 
