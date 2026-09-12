@@ -1,30 +1,112 @@
 """
 Asesmen Router - API endpoints for assessment
+
+State lives entirely in Postgres (AsesmenSiswa + JawabanItem), not in an
+in-memory dict: a serverless deployment may run each request on a fresh
+process, so anything held only in a Python dict is invisible to the next
+request. To evaluate "has this level's 5 questions passed or failed", the
+adaptive algorithm's state is replayed from the JawabanItem rows recorded
+so far for this asesmen_id - cheap (at most ~35 rows for a full run) and
+makes every request self-contained.
 """
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from typing import List, Optional
+from sqlalchemy import select, update
 from datetime import datetime
-import time
 
 from app.database import get_db
-from app.models import AsesmenSiswa, JawabanItem, Siswa, PosisiTangga, RiwayatTangga
-from app.schemas import (
-    AsesmenMulai,
-    AsesmenJawab,
-    AsesmenResponse,
-    AsesmenHasil,
-)
-from app.tangga.definisi import get_tangga_label, get_max_tangga
-from app.tangga.penempatan import AsesmenAdaptif, tentukan_kelompok
+from app.models import AsesmenSiswa, JawabanItem, Siswa, PosisiTangga, RiwayatTangga, PenandaStagnasi
+from app.schemas import AsesmenMulai, AsesmenJawab
+from app.tangga.definisi import get_tangga_label
+from app.tangga.penempatan import AsesmenAdaptif
 from app.tangga.butir_asesmen import generate_asesmen_items, get_items_for_tingkat
 
 router = APIRouter()
 
-# In-memory storage for ongoing assessments (in production, use Redis)
-asesmen_sessions: dict = {}
+
+async def _replay_adaptif(db: AsyncSession, asesmen: AsesmenSiswa) -> AsesmenAdaptif:
+    """Reconstruct adaptive-assessment state from the JawabanItem rows recorded so far."""
+    adaptif = AsesmenAdaptif(jenis=asesmen.jenis, tingkat_awal=asesmen.tangga_awal or 0)
+    adaptif.mulai_dari_tingkat(asesmen.tangga_awal or 0)
+
+    result = await db.execute(
+        select(JawabanItem)
+        .where(JawabanItem.asesmen_id == asesmen.id)
+        .order_by(JawabanItem.id)
+    )
+    for row in result.scalars().all():
+        adaptif.catat_jawaban(row.item_ke, row.tingkatan, row.jawaban)
+        if len(adaptif.jawaban_per_tingkat.get(row.tingkatan, [])) >= 5 and row.tingkatan == adaptif.tingkat_saat_ini:
+            adaptif.tentukan_langkah_selanjutnya()
+
+    return adaptif
+
+
+async def _terapkan_hasil_asesmen(
+    db: AsyncSession,
+    asesmen: AsesmenSiswa,
+    hasil_tingkat: int,
+):
+    """Persist the outcome of a completed assessment: position, history, stagnation."""
+    field_tangga = "tangga_literasi" if asesmen.jenis == "LITERASI" else "tangga_numerasi"
+    field_tgl = "tgl_terakhir_literasi" if asesmen.jenis == "LITERASI" else "tgl_terakhir_numerasi"
+    field_pekan = "pekan_ke_literasi" if asesmen.jenis == "LITERASI" else "pekan_ke_numerasi"
+
+    result = await db.execute(select(PosisiTangga).where(PosisiTangga.siswa_id == asesmen.siswa_id))
+    posisi = result.scalar_one_or_none()
+
+    tangga_sebelumnya = getattr(posisi, field_tangga) if posisi else None
+    tgl_sebelumnya = getattr(posisi, field_tgl) if posisi else None
+    lama_hari = (datetime.utcnow() - tgl_sebelumnya).days if tgl_sebelumnya else 0
+
+    if tangga_sebelumnya is not None and tangga_sebelumnya == hasil_tingkat:
+        pekan_baru = (getattr(posisi, field_pekan) or 0) + 1
+    else:
+        pekan_baru = 1
+
+    if posisi is None:
+        posisi = PosisiTangga(siswa_id=asesmen.siswa_id)
+        db.add(posisi)
+
+    setattr(posisi, field_tangga, hasil_tingkat)
+    setattr(posisi, field_tgl, datetime.utcnow())
+    setattr(posisi, field_pekan, pekan_baru)
+
+    db.add(RiwayatTangga(
+        siswa_id=asesmen.siswa_id,
+        jenis=asesmen.jenis,
+        tangga_awal=tangga_sebelumnya if tangga_sebelumnya is not None else (asesmen.tangga_awal or 0),
+        tangga_akhir=hasil_tingkat,
+        asesmen_id=asesmen.id,
+        lama_hari=lama_hari,
+    ))
+
+    # Stagnation: no movement for 3+ "weeks" (assessment rounds) -> flag; movement -> resolve.
+    result = await db.execute(
+        select(PenandaStagnasi).where(
+            PenandaStagnasi.siswa_id == asesmen.siswa_id,
+            PenandaStagnasi.jenis == asesmen.jenis,
+            PenandaStagnasi.status == "aktif",
+        )
+    )
+    penanda_aktif = result.scalar_one_or_none()
+
+    if tangga_sebelumnya is not None and tangga_sebelumnya == hasil_tingkat and pekan_baru >= 3:
+        level = "BERAT" if pekan_baru >= 5 else "SEDANG"
+        if penanda_aktif:
+            penanda_aktif.pekan_stagnan = pekan_baru
+            penanda_aktif.level = level
+        else:
+            db.add(PenandaStagnasi(
+                siswa_id=asesmen.siswa_id,
+                jenis=asesmen.jenis,
+                pekan_stagnan=pekan_baru,
+                level=level,
+                status="aktif",
+            ))
+    elif penanda_aktif:
+        penanda_aktif.status = "selesai"
 
 
 @router.post("/mulai", response_model=dict)
@@ -32,68 +114,46 @@ async def mulai_asesmen(
     data: AsesmenMulai,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Memulai sesi asesmen baru.
-    Mengembalikan asesmen_id dan item-item pertama.
-    """
-    # Cek apakah siswa ada
+    """Memulai sesi asesmen baru. Mengembalikan asesmen_id dan item-item pertama."""
     result = await db.execute(select(Siswa).where(Siswa.id == data.siswa_id))
     siswa = result.scalar_one_or_none()
-    
     if not siswa:
         raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
-    
-    # Cek apakah ada asesmen yang sedang berlangsung
-    if data.siswa_id in asesmen_sessions:
-        existing = asesmen_sessions[data.siswa_id]
-        if not existing.get("selesai", False):
-            return {
-                "asesmen_id": existing["asesmen_id"],
-                "tingkat_awal": existing["tingkat_saat_ini"],
-                "items": existing["items"],
-                "item_ke": existing["item_ke"],
-                "status": "melanjutkan",
-            }
-    
-    # Ambil posisi tangga terakhir
-    result = await db.execute(
-        select(PosisiTangga).where(PosisiTangga.siswa_id == data.siswa_id)
+
+    # Abandon any assessment of this type still marked in-progress for this student.
+    await db.execute(
+        update(AsesmenSiswa)
+        .where(
+            AsesmenSiswa.siswa_id == data.siswa_id,
+            AsesmenSiswa.jenis == data.jenis.value,
+            AsesmenSiswa.status == "berlangsung",
+        )
+        .values(status="terputus")
     )
+
+    result = await db.execute(select(PosisiTangga).where(PosisiTangga.siswa_id == data.siswa_id))
     posisi = result.scalar_one_or_none()
-    
     tingkat_terakhir = None
-    if data.jenis.value == "LITERASI":
-        tingkat_terakhir = posisi.tangga_literasi if posisi else None
-    else:
-        tingkat_terakhir = posisi.tangga_numerasi if posisi else None
-    
-    # Inisialisasi asesmen adaptif
-    asesmen = AsesmenAdaptif(jenis=data.jenis.value, tingkat_awal=tingkat_terakhir or 0)
-    tingkat_awal = asesmen.mulai_dari_tingkat(tingkat_terakhir or 0)
-    
-    # Generate items untuk tingkat awal
+    if posisi:
+        tingkat_terakhir = posisi.tangga_literasi if data.jenis.value == "LITERASI" else posisi.tangga_numerasi
+
+    adaptif = AsesmenAdaptif(jenis=data.jenis.value, tingkat_awal=tingkat_terakhir or 0)
+    tingkat_awal = adaptif.mulai_dari_tingkat(tingkat_terakhir or 0)
+
     items = generate_asesmen_items(data.jenis.value, tingkat_awal, jumlah=5)
-    
-    # Buat asesmen_id sementara (dalam produksi, simpan ke database)
-    asesmen_id = int(time.time() * 1000)  # timestamp as ID
-    
-    # Simpan sesi
-    asesmen_sessions[data.siswa_id] = {
-        "asesmen_id": asesmen_id,
-        "siswa_id": data.siswa_id,
-        "jenis": data.jenis.value,
-        "tingkat_awal": tingkat_awal,
-        "tingkat_saat_ini": tingkat_awal,
-        "items": items,
-        "item_ke": 0,
-        "jawaban": [],
-        "start_time": time.time(),
-        "selesai": False,
-        "asesmen_obj": asesmen,
-    }
-    
+
+    asesmen = AsesmenSiswa(
+        siswa_id=data.siswa_id,
+        jenis=data.jenis.value,
+        tangga_awal=tingkat_awal,
+        status="berlangsung",
+    )
+    db.add(asesmen)
+    await db.commit()
+    await db.refresh(asesmen)
+
     return {
-        "asesmen_id": asesmen_id,
+        "asesmen_id": asesmen.id,
         "siswa_id": data.siswa_id,
         "jenis": data.jenis.value,
         "tingkat_awal": tingkat_awal,
@@ -110,89 +170,71 @@ async def jawab_item(
     data: AsesmenJawab,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Merekam jawaban untuk satu item dan menentukan langkah selanjutnya.
-    """
-    # Cari sesi asesmen
-    sesi = None
-    for sid, s in asesmen_sessions.items():
-        if s["asesmen_id"] == data.asesmen_id:
-            sesi = s
-            break
-    
-    if not sesi:
+    """Merekam jawaban untuk satu item dan menentukan langkah selanjutnya."""
+    result = await db.execute(select(AsesmenSiswa).where(AsesmenSiswa.id == data.asesmen_id))
+    asesmen = result.scalar_one_or_none()
+    if not asesmen:
         raise HTTPException(status_code=404, detail="Sesi asesmen tidak ditemukan")
-    
-    if sesi["selesai"]:
+    if asesmen.status != "berlangsung":
         raise HTTPException(status_code=400, detail="Asesmen sudah selesai")
-    
-    # Catat jawaban
-    item_ke = sesi["item_ke"]
-    tingkat_saat_ini = sesi["tingkat_saat_ini"]
-    
-    sesi["jawaban"].append({
-        "item_ke": item_ke,
-        "tingkatan": tingkat_saat_ini,
-        "jawaban": data.jawaban,
-    })
-    
-    # Update asesmen adaptif
-    asesmen_obj = sesi["asesmen_obj"]
-    asesmen_obj.catat_jawaban(item_ke + 1, tingkat_saat_ini, data.jawaban)
-    
-    # Cek apakah sudah 5 item di tingkat ini
-    jawaban_di_tingkat = [j for j in sesi["jawaban"] if j["tingkatan"] == tingkat_saat_ini]
-    
+
+    adaptif = await _replay_adaptif(db, asesmen)
+    tingkat_saat_ini = adaptif.tingkat_saat_ini
+
+    db.add(JawabanItem(
+        asesmen_id=asesmen.id,
+        item_ke=data.item_ke,
+        tingkatan=tingkat_saat_ini,
+        jenis_kemampuan=get_tangga_label(asesmen.jenis, tingkat_saat_ini),
+        jawaban=data.jawaban,
+        jawaban_siswa=data.jawaban_siswa,
+    ))
+    adaptif.catat_jawaban(data.item_ke, tingkat_saat_ini, data.jawaban)
+
+    jawaban_di_tingkat = adaptif.jawaban_per_tingkat.get(tingkat_saat_ini, [])
+
     if len(jawaban_di_tingkat) >= 5:
-        # Evaluasi dan tentukan langkah selanjutnya
-        langkah = asesmen_obj.tentukan_langkah_selanjutnya()
-        
+        langkah = adaptif.tentukan_langkah_selanjutnya()
+
         if langkah["aksi"] == "selesai":
-            # Asesmen selesai
-            sesi["selesai"] = True
-            sesi["hasil_tingkat"] = langkah["hasil"]
-            
-            # Simpan ke database
-            # (Dalam implementasi penuh, simpan AsesmenSiswa dan JawabanItem)
-            
+            asesmen.status = "selesai"
+            asesmen.tangga_hasil = langkah["hasil"]
+            asesmen.durasi_detik = int((datetime.utcnow() - asesmen.tgl_asesmen.replace(tzinfo=None)).total_seconds())
+
+            await _terapkan_hasil_asesmen(db, asesmen, langkah["hasil"])
+            await db.commit()
+
             return {
                 "status": "selesai",
                 "hasil": {
                     "tingkat_hasil": langkah["hasil"],
-                    "tingkat_label": get_tangga_label(sesi["jenis"], langkah["hasil"]),
-                    "naik_tingkat": langkah["hasil"] - sesi["tingkat_awal"],
+                    "tingkat_label": get_tangga_label(asesmen.jenis, langkah["hasil"]),
+                    "naik_tingkat": langkah["hasil"] - asesmen.tangga_awal,
+                    "durasi_detik": asesmen.durasi_detik,
                     "pesan": langkah["pesan"],
                 },
             }
-        
-        elif langkah["aksi"] in ["naik", "turun"]:
-            # Pindah ke tingkat berikutnya
+
+        elif langkah["aksi"] in ("naik", "turun"):
             tingkat_baru = langkah["tingkat_berikutnya"]
-            items_baru = generate_asesmen_items(sesi["jenis"], tingkat_baru, jumlah=5)
-            
-            sesi["tingkat_saat_ini"] = tingkat_baru
-            sesi["items"] = items_baru
-            sesi["item_ke"] = 0
-            
+            items_baru = generate_asesmen_items(asesmen.jenis, tingkat_baru, jumlah=5)
+            await db.commit()
+
             return {
                 "status": "lanjut_tingkat",
                 "tingkat_baru": tingkat_baru,
-                "tingkat_label": get_tangga_label(sesi["jenis"], tingkat_baru),
+                "tingkat_label": get_tangga_label(asesmen.jenis, tingkat_baru),
                 "items": items_baru,
+                "instruksi_guru": get_items_for_tingkat(asesmen.jenis, tingkat_baru).get("instruksi_guru", ""),
                 "pesan": langkah["pesan"],
             }
-    
-    else:
-        # Lanjut item berikutnya di tingkat yang sama
-        sesi["item_ke"] = item_ke + 1
-        next_item = sesi["items"][item_ke + 1] if item_ke + 1 < len(sesi["items"]) else None
-        
-        return {
-            "status": "lanjut",
-            "item_ke": item_ke + 1,
-            "next_item": next_item,
-            "progress": f"{item_ke + 2}/{len(sesi['items'])}",
-        }
+
+    await db.commit()
+    return {
+        "status": "lanjut",
+        "item_ke": data.item_ke + 1,
+        "progress": f"{data.item_ke + 2}/5",
+    }
 
 
 @router.get("/{asesmen_id}", response_model=dict)
@@ -200,29 +242,31 @@ async def get_asesmen(
     asesmen_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Mendapatkan detail asesmen.
-    """
-    # Cari sesi
-    sesi = None
-    for sid, s in asesmen_sessions.items():
-        if s["asesmen_id"] == asesmen_id:
-            sesi = s
-            break
-    
-    if not sesi:
+    """Mendapatkan detail asesmen, termasuk rincian jawaban per tingkat."""
+    result = await db.execute(select(AsesmenSiswa).where(AsesmenSiswa.id == asesmen_id))
+    asesmen = result.scalar_one_or_none()
+    if not asesmen:
         raise HTTPException(status_code=404, detail="Asesmen tidak ditemukan")
-    
+
+    result = await db.execute(
+        select(JawabanItem)
+        .where(JawabanItem.asesmen_id == asesmen_id)
+        .order_by(JawabanItem.id)
+    )
+    detail = [
+        {"tingkat": row.tingkatan, "item_ke": row.item_ke, "benar": row.jawaban}
+        for row in result.scalars().all()
+    ]
+
     return {
-        "asesmen_id": sesi["asesmen_id"],
-        "siswa_id": sesi["siswa_id"],
-        "jenis": sesi["jenis"],
-        "tingkat_awal": sesi["tingkat_awal"],
-        "tingkat_saat_ini": sesi["tingkat_saat_ini"],
-        "item_ke": sesi["item_ke"],
-        "selesai": sesi["selesai"],
-        "hasil_tingkat": sesi.get("hasil_tingkat"),
-        "durasi_detik": int(time.time() - sesi["start_time"]) if sesi["selesai"] else None,
+        "asesmen_id": asesmen.id,
+        "siswa_id": asesmen.siswa_id,
+        "jenis": asesmen.jenis,
+        "tangga_awal": asesmen.tangga_awal,
+        "tangga_hasil": asesmen.tangga_hasil,
+        "status": asesmen.status,
+        "durasi_detik": asesmen.durasi_detik,
+        "detail": detail,
     }
 
 
@@ -231,26 +275,23 @@ async def get_asesmen_siswa(
     siswa_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Mendapatkan riwayat asesmen seorang siswa.
-    """
-    # Dalam implementasi penuh, query dari database
-    # Untuk MVP, return data dari sesi jika ada
-    
-    sesi = asesmen_sessions.get(siswa_id)
-    
-    if sesi and sesi["selesai"]:
+    """Mendapatkan riwayat asesmen terakhir seorang siswa."""
+    result = await db.execute(
+        select(AsesmenSiswa)
+        .where(AsesmenSiswa.siswa_id == siswa_id, AsesmenSiswa.status == "selesai")
+        .order_by(AsesmenSiswa.tgl_asesmen.desc())
+    )
+    terakhir = result.scalars().first()
+
+    if terakhir:
         return {
             "siswa_id": siswa_id,
             "asesmen_terakhir": {
-                "jenis": sesi["jenis"],
-                "tingkat_hasil": sesi["hasil_tingkat"],
-                "tingkat_label": get_tangga_label(sesi["jenis"], sesi["hasil_tingkat"]),
-                "durasi_detik": int(time.time() - sesi["start_time"]),
+                "jenis": terakhir.jenis,
+                "tingkat_hasil": terakhir.tangga_hasil,
+                "tingkat_label": get_tangga_label(terakhir.jenis, terakhir.tangga_hasil),
+                "durasi_detik": terakhir.durasi_detik,
             },
         }
-    
-    return {
-        "siswa_id": siswa_id,
-        "asesmen_terakhir": None,
-    }
+
+    return {"siswa_id": siswa_id, "asesmen_terakhir": None}

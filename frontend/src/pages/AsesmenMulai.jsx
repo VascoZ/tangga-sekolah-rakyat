@@ -5,6 +5,7 @@ import { DEMO_SISWA_KELAS_A } from '../lib/demoData'
 import { Search } from 'lucide-react'
 import GuruShell from '../components/GuruShell'
 import EmptyState from '../components/EmptyState'
+import { useToast } from '../components/ToastProvider'
 
 const TANGGA_LABELS = {
   LITERASI: ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata Utuh', 'Membaca Kalimat', 'Membaca Paragraf', 'Memahami Bacaan'],
@@ -14,18 +15,24 @@ const TANGGA_LABELS = {
 function AsesmenMulai() {
   const navigate = useNavigate()
   const { mulaiAsesmen, loading } = useAsesmenStore()
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [selectedSiswa, setSelectedSiswa] = useState(null)
   const [jenis, setJenis] = useState('LITERASI')
 
-  const filteredSiswa = DEMO_SISWA_KELAS_A.filter(s => 
+  const filteredSiswa = DEMO_SISWA_KELAS_A.filter(s =>
     s.nama.toLowerCase().includes(search.toLowerCase()) ||
     s.kode.toLowerCase().includes(search.toLowerCase())
   )
 
-  const handleStart = () => {
-    if (!selectedSiswa) return
-    navigate('/guru/asesmen/sesi', { state: { siswa: selectedSiswa, jenis } })
+  const handleStart = async () => {
+    if (!selectedSiswa || loading) return
+    try {
+      await mulaiAsesmen(selectedSiswa.id, jenis)
+      navigate('/guru/asesmen/sesi', { state: { siswa: selectedSiswa, jenis } })
+    } catch (err) {
+      toast.error(`Gagal memulai asesmen: ${err.message}`)
+    }
   }
 
   return (

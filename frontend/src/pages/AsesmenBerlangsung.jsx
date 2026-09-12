@@ -1,89 +1,45 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { X } from 'lucide-react'
+import { useAsesmenStore } from '../lib/store'
+import { useToast } from '../components/ToastProvider'
 
-const MOCK_ITEMS = {
-  LITERASI: {
-    0: [
-      { teks: 'A', instruksi: 'Tunjuk huruf. Tanyakan: Huruf apa ini?' },
-      { teks: 'B', instruksi: 'Tunjuk huruf. Tanyakan: Huruf apa ini?' },
-      { teks: 'C', instruksi: 'Tunjuk huruf. Tanyakan: Huruf apa ini?' },
-      { teks: 'D', instruksi: 'Tunjuk huruf. Tanyakan: Huruf apa ini?' },
-      { teks: 'I', instruksi: 'Tunjuk huruf. Tanyakan: Huruf apa ini?' },
-    ],
-    1: [
-      { teks: 'M', instruksi: 'Tunjuk huruf. Minta siswa sebutkan nama dan bunyinya.' },
-      { teks: 'S', instruksi: 'Tunjuk huruf. Minta siswa sebutkan nama dan bunyinya.' },
-      { teks: 'L', instruksi: 'Tunjuk huruf. Minta siswa sebutkan nama dan bunyinya.' },
-      { teks: 'P', instruksi: 'Tunjuk huruf. Minta siswa sebutkan nama dan bunyinya.' },
-      { teks: 'N', instruksi: 'Tunjuk huruf. Minta siswa sebutkan nama dan bunyinya.' },
-    ],
-    2: [
-      { teks: 'BA-TU', instruksi: 'Tunjuk suku kata. Tanyakan: Coba baca ini.' },
-      { teks: 'RU-MAH', instruksi: 'Tunjuk suku kata. Tanyakan: Coba baca ini.' },
-      { teks: 'I-KAN', instruksi: 'Tunjuk suku kata. Tanyakan: Coba baca ini.' },
-      { teks: 'SA-PI', instruksi: 'Tunjuk suku kata. Tanyakan: Coba baca ini.' },
-      { teks: 'BU-KU', instruksi: 'Tunjuk suku kata. Tanyakan: Coba baca ini.' },
-    ],
-    3: [
-      { teks: 'RUMAH', instruksi: 'Tunjukkan kartu kata. Minta siswa membaca dengan lantang.' },
-      { teks: 'JALAN', instruksi: 'Tunjukkan kartu kata. Minta siswa membaca dengan lantang.' },
-      { teks: 'POHON', instruksi: 'Tunjukkan kartu kata. Minta siswa membaca dengan lantang.' },
-      { teks: 'SUNGAI', instruksi: 'Tunjukkan kartu kata. Minta siswa membaca dengan lantang.' },
-      { teks: 'BALO', instruksi: 'Tunjukkan kartu kata. Minta siswa membaca dengan lantang.' },
-    ],
-    4: [
-      { teks: 'Ibu pergi ke pasar', instruksi: 'Tunjukkan kalimat. Minta siswa membaca dengan lantang.' },
-      { teks: 'Adik bermain bola', instruksi: 'Tunjukkan kalimat. Minta siswa membaca dengan lantang.' },
-      { teks: 'Ayah membaca koran', instruksi: 'Tunjukkan kalimat. Minta siswa membaca dengan lantang.' },
-      { teks: 'Kakak menyapu halaman', instruksi: 'Tunjukkan kalimat. Minta siswa membaca dengan lantang.' },
-      { teks: 'Nenek duduk di kursi', instruksi: 'Tunjukkan kalimat. Minta siswa membaca dengan lantang.' },
-    ],
-    5: [
-      { teks: 'Pagi ini, Budi pergi ke sekolah.', instruksi: 'Minta siswa membaca paragraf dengan lancar.' },
-      { teks: 'Ia berjalan bersama teman-temannya.', instruksi: 'Lanjutkan paragraf.' },
-      { teks: 'Di jalan, mereka melihat pohon dan bunga.', instruksi: 'Lanjutkan paragraf.' },
-      { teks: 'Budi senang karena hari ini cerah.', instruksi: 'Lanjutkan paragraf.' },
-      { teks: 'Ia sampai di sekolah tepat waktu.', instruksi: 'Selesaikan paragraf.' },
-    ],
-    6: [
-      { teks: 'Siapa yang pergi ke sekolah?', instruksi: 'Tanyakan: Siapa yang pergi ke sekolah? (Jawaban: Budi)' },
-      { teks: 'Apa yang mereka lihat di jalan?', instruksi: 'Tanyakan: Apa yang mereka lihat? (Jawaban: pohon dan bunga)' },
-      { teks: 'Mengapa Budi senang?', instruksi: 'Tanyakan: Mengapa Budi senang? (Jawaban: hari cerah)' },
-      { teks: 'Bagaimana Budi pergi ke sekolah?', instruksi: 'Tanyakan: Bagaimana Budi pergi? (Jawaban: berjalan)' },
-      { teks: 'Hari apa Budi pergi ke sekolah?', instruksi: 'Tanyakan: Kapan Budi pergi? (Jawaban: pagi hari)' },
-    ],
-  },
+// Item shapes vary per tingkat/jenis (huruf, teks, bilangan, soal, pertanyaan) -
+// "jawaban" is always the answer key, everything else is what to display.
+const DISPLAY_KEYS = ['huruf', 'bilangan', 'teks', 'soal', 'pertanyaan']
+function displayTextFor(item) {
+  if (!item) return ''
+  for (const key of DISPLAY_KEYS) {
+    if (item[key] != null) return item[key]
+  }
+  return ''
 }
-
-const TANGGA_LABELS = ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata Utuh', 'Membaca Kalimat', 'Membaca Paragraf Lancar', 'Memahami Bacaan']
 
 function AsesmenBerlangsung() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { sesiAktif, loading, jawab, reset } = useAsesmenStore()
+  const toast = useToast()
+
   const state = location.state || {}
   const siswa = state.siswa || { nama: 'Siswa', kode: 'SR-001-0000' }
-  const jenis = state.jenis || 'LITERASI'
-  const tingkatAwal = jenis === 'LITERASI' ? (siswa.tanggaLit ?? 0) : (siswa.tanggaNum ?? 0)
+  const jenis = sesiAktif?.jenis || state.jenis || 'LITERASI'
 
-  const [tingkat, setTingkat] = useState(tingkatAwal)
-  const [itemKe, setItemKe] = useState(0)
-  const [jawaban, setJawaban] = useState([])
   const [waktu, setWaktu] = useState(0)
-  const [showTransisi, setShowTransisi] = useState(false)
-  const [transisiAksi, setTransisiAksi] = useState(null)
-  const [detailJawaban, setDetailJawaban] = useState([])
+  const [transisi, setTransisi] = useState(null) // { aksi: 'naik' | 'turun' | 'selesai', label }
+  const redirectedRef = useRef(false)
 
   useEffect(() => {
-    const timer = setInterval(() => setWaktu(w => w + 1), 1000)
+    if (!sesiAktif && !redirectedRef.current) {
+      redirectedRef.current = true
+      navigate('/guru/asesmen', { replace: true })
+    }
+  }, [sesiAktif, navigate])
+
+  useEffect(() => {
+    const timer = setInterval(() => setWaktu((w) => w + 1), 1000)
     return () => clearInterval(timer)
   }, [])
-
-  const handleBatalkan = () => {
-    if (window.confirm('Batalkan asesmen ini? Jawaban yang sudah tercatat akan hilang.')) {
-      navigate('/guru/asesmen')
-    }
-  }
 
   const formatTime = (s) => {
     const m = Math.floor(s / 60)
@@ -91,86 +47,83 @@ function AsesmenBerlangsung() {
     return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
   }
 
-  const selesaiAsesmen = (hasilTingkat) => {
-    navigate('/guru/asesmen/hasil', {
-      state: {
-        siswa,
-        jenis,
-        tingkatAwal,
-        hasil: hasilTingkat,
-        naik: hasilTingkat - tingkatAwal,
-        durasi: formatTime(waktu),
-        detail: [...detailJawaban],
-      },
-    })
-  }
-
-  const handleJawab = (benar) => {
-    const newJawaban = [...jawaban, benar]
-    const items = MOCK_ITEMS.LITERASI[tingkat] || []
-    const newDetail = [...detailJawaban, { tingkat, itemKe, teks: items[itemKe]?.teks || '', benar }]
-    setDetailJawaban(newDetail)
-    setJawaban(newJawaban)
-
-    if (newJawaban.length >= 5) {
-      const benarCount = newJawaban.filter(j => j).length
-
-      if (benarCount >= 3) {
-        // Lulus
-        if (tingkat < 6) {
-          setTransisiAksi('naik')
-          setShowTransisi(true)
-          setTimeout(() => {
-            setShowTransisi(false)
-            setTingkat(tingkat + 1)
-            setItemKe(0)
-            setJawaban([])
-          }, 1500)
-        } else {
-          selesaiAsesmen(6)
-        }
-      } else {
-        // Tidak lulus -> selesai
-        if (tingkat > 0 && tingkat <= tingkatAwal + 1) {
-          setTransisiAksi('selesai')
-          setShowTransisi(true)
-          setTimeout(() => {
-            selesaiAsesmen(tingkatAwal)
-          }, 1500)
-        } else {
-          selesaiAsesmen(tingkat > 0 ? tingkat : 0)
-        }
-      }
-    } else {
-      setItemKe(itemKe + 1)
+  const handleBatalkan = () => {
+    if (window.confirm('Batalkan asesmen ini? Jawaban yang sudah tercatat akan hilang.')) {
+      reset()
+      navigate('/guru/asesmen')
     }
   }
 
-  const items = MOCK_ITEMS.LITERASI[tingkat] || []
-  const current = items[itemKe]
+  const handleJawab = async (benar) => {
+    if (loading || !sesiAktif) return
+    const tingkatSebelum = sesiAktif.tingkat_saat_ini ?? sesiAktif.tangga_awal ?? sesiAktif.tingkat_awal
 
-  if (showTransisi) {
+    try {
+      const data = await jawab(benar)
+
+      if (data.status === 'selesai') {
+        setTransisi({ aksi: 'selesai', label: data.hasil.tingkat_label })
+        setTimeout(() => {
+          navigate('/guru/asesmen/hasil', {
+            state: {
+              siswa,
+              jenis,
+              asesmenId: sesiAktif.asesmen_id,
+              tingkatAwal: sesiAktif.tangga_awal ?? sesiAktif.tingkat_awal,
+              hasil: data.hasil.tingkat_hasil,
+              naik: data.hasil.naik_tingkat,
+              durasi: formatTime(waktu),
+            },
+          })
+        }, 1500)
+      } else if (data.status === 'lanjut_tingkat') {
+        setTransisi({
+          aksi: data.tingkat_baru > tingkatSebelum ? 'naik' : 'turun',
+          label: data.tingkat_label,
+          tingkat: data.tingkat_baru,
+        })
+        setTimeout(() => setTransisi(null), 1400)
+      }
+      // status === 'lanjut': store already advanced item_ke, component re-renders normally.
+    } catch (err) {
+      toast.error(`Gagal menyimpan jawaban: ${err.message}`)
+    }
+  }
+
+  if (!sesiAktif) return null // redirecting
+
+  const tingkat = sesiAktif.tingkat_saat_ini ?? sesiAktif.tangga_awal ?? sesiAktif.tingkat_awal
+  const items = sesiAktif.items || []
+  const itemKe = sesiAktif.item_ke || 0
+  // Some tingkat only have 1-3 authored items (e.g. literasi paragraf reading) -
+  // wrap around rather than showing a blank card past the last one.
+  const current = items.length ? items[itemKe % items.length] : null
+
+  if (transisi) {
     return (
       <div className="min-h-screen bg-krem flex items-center justify-center">
         <div className="text-center animate-slideUp">
-          {transisiAksi === 'naik' ? (
+          {transisi.aksi === 'naik' ? (
             <>
               <div className="text-7xl mb-4">▲</div>
               <div className="text-3xl font-display font-bold text-green-700 mb-2">
-                Naik ke Tingkat {tingkat + 1}!
+                Naik ke Tingkat {transisi.tingkat}!
               </div>
-              <div className="text-lg text-sr-500">
-                {TANGGA_LABELS[tingkat + 1]}
+              <div className="text-lg text-sr-500">{transisi.label}</div>
+            </>
+          ) : transisi.aksi === 'turun' ? (
+            <>
+              <div className="text-3xl font-display font-bold text-sr-700 mb-2">
+                Mencoba tingkat {transisi.tingkat}
               </div>
+              <div className="text-lg text-sr-500">{transisi.label}</div>
             </>
           ) : (
             <>
               <div className="text-3xl font-display font-bold text-sr-700 mb-2">
                 Titik pijak ditemukan
               </div>
-              <div className="text-lg text-sr-500">
-                {TANGGA_LABELS[tingkat]}
-              </div>
+              <div className="text-lg text-sr-500">{transisi.label}</div>
             </>
           )}
         </div>
@@ -182,15 +135,7 @@ function AsesmenBerlangsung() {
     return (
       <div className="min-h-screen bg-krem flex items-center justify-center">
         <div className="text-center">
-          <div className="text-2xl font-display font-semibold text-sr-900 mb-4">
-            Asesmen Selesai
-          </div>
-          <button
-            onClick={() => selesaiAsesmen(tingkat)}
-            className="bg-sr-700 text-white px-6 py-3 rounded-lg font-medium"
-          >
-            Lihat Hasil
-          </button>
+          <div className="text-2xl font-display font-semibold text-sr-900">Memuat asesmen...</div>
         </div>
       </div>
     )
@@ -228,30 +173,32 @@ function AsesmenBerlangsung() {
             TINGKAT {tingkat}
           </div>
           <div className="text-sr-600 mt-2 text-lg">
-            {TANGGA_LABELS[tingkat]}
+            {sesiAktif.tingkat_label}
           </div>
         </div>
 
         {/* Instruksi */}
-        <div className="bg-white rounded-xl p-5 shadow-card mb-8">
-          <p className="text-sr-700">
-            📢 <strong>Instruksi untuk Guru:</strong>
-          </p>
-          <p className="text-sr-600 mt-2 text-lg">
-            "{current.instruksi}"
-          </p>
-        </div>
+        {sesiAktif.instruksi_guru && (
+          <div className="bg-white rounded-xl p-5 shadow-card mb-8">
+            <p className="text-sr-700">
+              📢 <strong>Instruksi untuk Guru:</strong>
+            </p>
+            <p className="text-sr-600 mt-2 text-lg">
+              "{sesiAktif.instruksi_guru}"
+            </p>
+          </div>
+        )}
 
         {/* Item Display */}
         <div className="bg-white rounded-xl p-10 shadow-card mb-8 text-center min-h-[200px] flex items-center justify-center">
-          <div className="font-mono font-bold text-sr-900" style={{ fontSize: '64px', lineHeight: '1.2' }}>
-            {current.teks}
+          <div className="font-mono font-bold text-sr-900" style={{ fontSize: current.soal || current.pertanyaan ? '28px' : '64px', lineHeight: '1.3' }}>
+            {displayTextFor(current)}
           </div>
         </div>
 
         {/* Progress */}
         <div className="flex justify-center gap-3 mb-8">
-          {items.map((_, idx) => (
+          {Array.from({ length: Math.max(items.length, 5) }).map((_, idx) => (
             <div
               key={idx}
               className={`w-4 h-4 rounded-full transition-colors ${
@@ -259,20 +206,22 @@ function AsesmenBerlangsung() {
               }`}
             />
           ))}
-          <span className="text-sm text-sr-400 ml-2">{itemKe + 1}/{items.length}</span>
+          <span className="text-sm text-sr-400 ml-2">{itemKe + 1}/5</span>
         </div>
 
         {/* Buttons */}
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={() => handleJawab(false)}
-            className="bg-red-50 border-2 border-red-300 text-red-700 py-6 rounded-xl font-bold text-xl hover:bg-red-100 active:scale-95 transition-all select-none"
+            disabled={loading}
+            className="bg-red-50 border-2 border-red-300 text-red-700 py-6 rounded-xl font-bold text-xl hover:bg-red-100 active:scale-95 transition-all select-none disabled:opacity-50"
           >
             ✗ SALAH
           </button>
           <button
             onClick={() => handleJawab(true)}
-            className="bg-green-50 border-2 border-green-400 text-green-700 py-6 rounded-xl font-bold text-xl hover:bg-green-100 active:scale-95 transition-all select-none"
+            disabled={loading}
+            className="bg-green-50 border-2 border-green-400 text-green-700 py-6 rounded-xl font-bold text-xl hover:bg-green-100 active:scale-95 transition-all select-none disabled:opacity-50"
           >
             ✓ BENAR
           </button>

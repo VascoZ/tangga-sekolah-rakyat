@@ -1,9 +1,9 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle, XCircle, ArrowRight } from 'lucide-react'
-import { useEffect } from 'react'
+import { CheckCircle, XCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import confetti from 'canvas-confetti'
-
-const TANGGA_LABELS = ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata Utuh', 'Membaca Kalimat', 'Membaca Paragraf Lancar', 'Memahami Bacaan']
+import { asesmenApi } from '../lib/api'
+import { TANGGA_LABELS } from '../lib/demoData'
 
 function AsesmenHasil() {
   const location = useLocation()
@@ -15,9 +15,18 @@ function AsesmenHasil() {
   const naik = state.naik ?? 0
   const tingkatAwal = state.tingkatAwal ?? 0
   const durasi = state.durasi || '00:00'
-  const detail = state.detail || []
+  const maxTingkat = jenis === 'NUMERASI' ? 5 : 6
+  const labels = TANGGA_LABELS[jenis] || TANGGA_LABELS.LITERASI
 
-  // Group detail by tingkat
+  const [detail, setDetail] = useState([])
+
+  useEffect(() => {
+    if (!state.asesmenId) return
+    asesmenApi.get(state.asesmenId)
+      .then((data) => setDetail(data.detail || []))
+      .catch(() => {})
+  }, [state.asesmenId])
+
   const groupByTingkat = {}
   detail.forEach(d => {
     if (!groupByTingkat[d.tingkat]) groupByTingkat[d.tingkat] = []
@@ -38,7 +47,7 @@ function AsesmenHasil() {
           <h1 className="font-display text-2xl font-bold text-sr-900 mb-2">
             {naik >= 2 ? '🎉 Hasil Asesmen' : naik === 1 ? '✨ Hasil Asesmen' : 'Hasil Asesmen'}
           </h1>
-          <p className="text-sr-500">{siswa.kode} · {siswa.nama} · {siswa.jenjang || 'SMA'}</p>
+          <p className="text-sr-500">{siswa.kode} · {siswa.nama} · {siswa.jenjang || 'SMA'} · {jenis}</p>
         </div>
 
         {/* Result Badge */}
@@ -47,7 +56,7 @@ function AsesmenHasil() {
             Mulai dari Tangga {hasil}
           </div>
           <div className="text-sr-600 mt-2 text-lg">
-            {TANGGA_LABELS[hasil]}
+            {labels[hasil]}
           </div>
         </div>
 
@@ -60,7 +69,7 @@ function AsesmenHasil() {
             </span>
           </div>
           <div className="flex gap-1">
-            {[0, 1, 2, 3, 4, 5, 6].map((t) => (
+            {Array.from({ length: maxTingkat + 1 }, (_, t) => (
               <div
                 key={t}
                 className={`flex-1 h-3 rounded transition-colors ${
@@ -70,35 +79,37 @@ function AsesmenHasil() {
             ))}
           </div>
           <div className="flex justify-between text-xs text-sr-400 mt-1">
-            <span>T0</span><span>T6</span>
+            <span>T0</span><span>T{maxTingkat}</span>
           </div>
         </div>
 
         {/* Detail */}
-        <div className="bg-white rounded-xl p-6 shadow-card mb-6">
-          <h3 className="font-display font-semibold text-sr-900 mb-4">Detail Jawaban</h3>
-          {Object.entries(groupByTingkat).map(([t, items]) => {
-            const benarCount = items.filter(i => i.benar).length
-            const lulus = benarCount >= 3
-            return (
-              <div key={t} className={`border-l-4 ${lulus ? 'border-green-400' : 'border-red-400'} pl-4 mb-4`}>
-                <div className="font-medium text-sr-900">
-                  Tingkat {t} ({TANGGA_LABELS[parseInt(t)]})
+        {Object.keys(groupByTingkat).length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-card mb-6">
+            <h3 className="font-display font-semibold text-sr-900 mb-4">Detail Jawaban</h3>
+            {Object.entries(groupByTingkat).map(([t, items]) => {
+              const benarCount = items.filter(i => i.benar).length
+              const lulus = benarCount >= 3
+              return (
+                <div key={t} className={`border-l-4 ${lulus ? 'border-green-400' : 'border-red-400'} pl-4 mb-4`}>
+                  <div className="font-medium text-sr-900">
+                    Tingkat {t} ({labels[parseInt(t)]})
+                  </div>
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {items.map((item, idx) => (
+                      item.benar
+                        ? <CheckCircle key={idx} className="w-5 h-5 text-green-500" />
+                        : <XCircle key={idx} className="w-5 h-5 text-red-500" />
+                    ))}
+                  </div>
+                  <div className="text-sm text-sr-500 mt-1">
+                    {benarCount}/5 benar — {lulus ? (parseInt(t) === hasil ? `Titik Pijak: Tangga ${t}` : `Lulus ▸ Tingkat ${parseInt(t) + 1}`) : 'Tidak Lulus ◂'}
+                  </div>
                 </div>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  {items.map((item, idx) => (
-                    item.benar
-                      ? <CheckCircle key={idx} className="w-5 h-5 text-green-500" />
-                      : <XCircle key={idx} className="w-5 h-5 text-red-500" />
-                  ))}
-                </div>
-                <div className="text-sm text-sr-500 mt-1">
-                  {benarCount}/5 benar — {lulus ? (parseInt(t) === hasil ? `Titik Pijak: Tangga ${t}` : `Lulus ▸ Tingkat ${parseInt(t) + 1}`) : 'Tidak Lulus ◂'}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Duration */}
         <div className="text-center text-sr-500 mb-6">
