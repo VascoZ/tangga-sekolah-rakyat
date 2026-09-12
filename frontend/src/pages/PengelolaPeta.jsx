@@ -33,9 +33,24 @@ const STATUS_COLOR = {
   terlambat: { color: '#E63946', label: 'Terlambat (> 4 mg)' },
 }
 
+const STATUS_FILTERS = [
+  { value: 'semua', label: 'Semua' },
+  { value: 'baik', label: 'Baik' },
+  { value: 'sedang', label: 'Sedang' },
+  { value: 'terlambat', label: 'Terlambat' },
+]
+
 function PengelolaPeta() {
   const toast = useToast()
   const [selected, setSelected] = useState(null)
+  const [statusFilter, setStatusFilter] = useState('semua')
+
+  const sekolahFiltered = statusFilter === 'semua' ? SEKOLAH_DATA : SEKOLAH_DATA.filter((s) => s.status === statusFilter)
+
+  const handleFilterChange = (value) => {
+    setStatusFilter(value)
+    if (selected && value !== 'semua' && selected.status !== value) setSelected(null)
+  }
 
   // Simple map: project onto a stylized grid sized to fit every seeded school,
   // instead of a hardcoded Java-centric window (which used to clip Medan/Deli
@@ -62,8 +77,23 @@ function PengelolaPeta() {
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="font-display text-2xl font-bold text-sr-900">Peta Sebaran Sekolah Rakyat</h1>
-          <p className="text-sr-500 text-sm mt-1">14 sekolah · 8 provinsi</p>
+          <p className="text-sr-500 text-sm mt-1">{sekolahFiltered.length} dari {SEKOLAH_DATA.length} sekolah · 8 provinsi</p>
         </div>
+      </div>
+
+      {/* Status filter */}
+      <div className="flex gap-2 mb-4">
+        {STATUS_FILTERS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => handleFilterChange(opt.value)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              statusFilter === opt.value ? 'bg-sr-700 text-white' : 'bg-white text-sr-600 border border-gray-200 hover:bg-sr-50'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {/* Legend */}
@@ -88,7 +118,7 @@ function PengelolaPeta() {
           ))}
 
           {/* Pins */}
-          {SEKOLAH_DATA.map((s) => {
+          {sekolahFiltered.map((s) => {
             const { x, y } = projectToMap(s.lat, s.lng)
             return (
               <button

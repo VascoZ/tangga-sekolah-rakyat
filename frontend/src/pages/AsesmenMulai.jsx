@@ -7,6 +7,7 @@ import { toRosterView } from '../lib/roster'
 import { Search } from 'lucide-react'
 import GuruShell from '../components/GuruShell'
 import EmptyState from '../components/EmptyState'
+import TanggaFilterBar, { matchesTanggaFilter, matchesSearch } from '../components/TanggaFilterBar'
 import { useToast } from '../components/ToastProvider'
 
 const TANGGA_LABELS = {
@@ -20,6 +21,7 @@ function AsesmenMulai() {
   const { user } = useAuthStore()
   const toast = useToast()
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('semua')
   const [selectedSiswa, setSelectedSiswa] = useState(null)
   const [jenis, setJenis] = useState('LITERASI')
   const [roster, setRoster] = useState(null)
@@ -32,10 +34,7 @@ function AsesmenMulai() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const filteredSiswa = (roster || []).filter(s =>
-    s.nama.toLowerCase().includes(search.toLowerCase()) ||
-    s.kode.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredSiswa = (roster || []).filter(s => matchesSearch(s, search) && matchesTanggaFilter(s, filter))
 
   const handleStart = async () => {
     if (!selectedSiswa || loading) return
@@ -50,19 +49,15 @@ function AsesmenMulai() {
   return (
     <GuruShell title="Asesmen Lisan — Pilih Siswa" backTo="/guru">
       <>
-        {/* Search */}
-        <div className="bg-white rounded-xl p-4 shadow-card mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sr-400" />
-            <input
-              type="text"
-              placeholder="Cari nama atau kode siswa..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 focus:border-sr-500 focus:ring-2 focus:ring-sr-200 outline-none"
-            />
-          </div>
-        </div>
+        {/* Search & Filter */}
+        <TanggaFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          filter={filter}
+          onFilterChange={setFilter}
+          placeholder="Cari nama atau kode siswa..."
+          className="mb-6"
+        />
 
         {/* Siswa List */}
         {roster === null ? (

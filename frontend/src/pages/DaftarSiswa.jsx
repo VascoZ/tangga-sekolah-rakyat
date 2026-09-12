@@ -7,29 +7,10 @@ import { toRosterView } from '../lib/roster'
 import GuruShell from '../components/GuruShell'
 import TanggaLegend from '../components/TanggaLegend'
 import EmptyState from '../components/EmptyState'
+import TanggaFilterBar, { matchesTanggaFilter, matchesSearch } from '../components/TanggaFilterBar'
 import { useToast } from '../components/ToastProvider'
 
 const TANGGA_COLORS = ['badge-tangga-0', 'badge-tangga-1', 'badge-tangga-2', 'badge-tangga-3', 'badge-tangga-4', 'badge-tangga-5', 'badge-tangga-6']
-
-const FILTERS = [
-  { value: 'semua', label: 'Semua Tangga' },
-  { value: 'awal', label: 'T0-2 (Awal)' },
-  { value: 'tengah', label: 'T3-4 (Tengah)' },
-  { value: 'lanjut', label: 'T5-6 (Lanjut)' },
-  { value: 'belum', label: 'Belum Asesmen' },
-  { value: 'stagnan', label: 'Stagnasi' },
-]
-
-function matchesFilter(siswa, filter) {
-  switch (filter) {
-    case 'awal': return siswa.tanggaLit !== null && siswa.tanggaLit <= 2
-    case 'tengah': return siswa.tanggaLit !== null && siswa.tanggaLit >= 3 && siswa.tanggaLit <= 4
-    case 'lanjut': return siswa.tanggaLit !== null && siswa.tanggaLit >= 5
-    case 'belum': return siswa.tanggaLit === null
-    case 'stagnan': return siswa.stagnan > 0
-    default: return true
-  }
-}
 
 function TambahSiswaModal({ kelasId, jenjang, onClose, onCreated }) {
   const toast = useToast()
@@ -112,11 +93,7 @@ function DaftarSiswa() {
 
   const filtered = useMemo(() => {
     if (!roster) return []
-    const q = search.trim().toLowerCase()
-    return roster.filter((s) => {
-      const matchesSearch = !q || s.nama.toLowerCase().includes(q) || s.kode.toLowerCase().includes(q)
-      return matchesSearch && matchesFilter(s, filter)
-    })
+    return roster.filter((s) => matchesSearch(s, search) && matchesTanggaFilter(s, filter))
   }, [roster, search, filter])
 
   const sudahAsesmen = roster ? roster.filter(s => s.tanggaLit !== null).length : 0
@@ -136,29 +113,9 @@ function DaftarSiswa() {
       }
     >
       {/* Search & Filter */}
-      <div className="bg-white rounded-xl p-4 shadow-card mb-6">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-sr-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Cari nama atau kode..."
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:border-sr-500 focus:ring-2 focus:ring-sr-200 outline-none"
-            />
-          </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-200 focus:border-sr-500 outline-none"
-          >
-            {FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
-        </div>
-        <div className="mt-3">
-          <TanggaLegend jenis="LITERASI" />
-        </div>
+      <TanggaFilterBar search={search} onSearchChange={setSearch} filter={filter} onFilterChange={setFilter} />
+      <div className="mb-6 mt-2">
+        <TanggaLegend jenis="LITERASI" />
       </div>
 
       {loadError && (

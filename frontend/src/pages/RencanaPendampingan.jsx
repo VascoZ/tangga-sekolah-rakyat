@@ -4,6 +4,7 @@ import { useAuthStore } from '../lib/auth'
 import { tanggaApi, rencanaApi } from '../lib/api'
 import { toRosterView } from '../lib/roster'
 import { useToast } from '../components/ToastProvider'
+import TanggaFilterBar, { matchesTanggaFilter, matchesSearch } from '../components/TanggaFilterBar'
 import { Sparkles, ChevronLeft, CheckCircle2, RefreshCw, Eye } from 'lucide-react'
 
 const TANGGA_COLORS_BG = ['bg-tangga-0', 'bg-tangga-1', 'bg-tangga-2', 'bg-tangga-3', 'bg-tangga-4', 'bg-tangga-5', 'bg-tangga-6']
@@ -18,6 +19,8 @@ function RencanaPendampingan() {
   const kelasId = user?.kelas?.id || 1
 
   const [roster, setRoster] = useState(null)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('semua')
   const [selectedSiswa, setSelectedSiswa] = useState(null)
   const [rencanaHistory, setRencanaHistory] = useState(null) // list, newest first
   const [generating, setGenerating] = useState(false)
@@ -121,8 +124,10 @@ function RencanaPendampingan() {
           {roster === null ? (
             <div className="text-sr-400 text-sm py-4">Memuat daftar siswa...</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              {roster.map((s) => (
+            <>
+              <TanggaFilterBar search={search} onSearchChange={setSearch} filter={filter} onFilterChange={setFilter} className="mb-4 !p-0 !shadow-none" />
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                {roster.filter((s) => matchesSearch(s, search) && matchesTanggaFilter(s, filter)).map((s) => (
                 <button
                   key={s.id}
                   onClick={() => selectSiswa(s)}
@@ -141,8 +146,9 @@ function RencanaPendampingan() {
                     </span>
                   )}
                 </button>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

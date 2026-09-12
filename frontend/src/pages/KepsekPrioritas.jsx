@@ -13,28 +13,37 @@ const NAV = [
 
 const SEKOLAH_ID = 1
 
+const JENIS_OPTIONS = [
+  { value: 'LITERASI', label: 'Literasi' },
+  { value: 'NUMERASI', label: 'Numerasi' },
+  { value: 'SEMUA', label: 'Semua Jenis' },
+]
+
 function KepsekPrioritas() {
   const toast = useToast()
-  const [stagnanList, setStagnanList] = useState(null)
+  const [allStagnan, setAllStagnan] = useState(null)
+  const [jenisFilter, setJenisFilter] = useState('LITERASI')
   const [ditanganiIds, setDitanganiIds] = useState(new Set())
 
   useEffect(() => {
-    tanggaApi.getStagnasi({ sekolah_id: SEKOLAH_ID }).then((list) =>
-      setStagnanList(
-        list.filter(s => s.jenis === 'LITERASI').sort((a, b) => b.pekan_stagnan - a.pekan_stagnan)
-      )
-    ).catch(() => setStagnanList([]))
+    tanggaApi.getStagnasi({ sekolah_id: SEKOLAH_ID }).then(setAllStagnan).catch(() => setAllStagnan([]))
   }, [])
 
-  const tandaiDitangani = (id, nama) => {
-    setDitanganiIds(prev => new Set([...prev, id]))
+  const tandaiDitangani = (key, nama) => {
+    setDitanganiIds(prev => new Set([...prev, key]))
     toast.success(`${nama} ditandai sudah ditangani.`)
   }
 
-  const berat = useMemo(() => (stagnanList || []).filter(s => s.pekan_stagnan >= 5), [stagnanList])
-  const sedang = useMemo(() => (stagnanList || []).filter(s => s.pekan_stagnan < 5), [stagnanList])
+  const stagnanList = useMemo(() => {
+    if (!allStagnan) return []
+    const filtered = jenisFilter === 'SEMUA' ? allStagnan : allStagnan.filter(s => s.jenis === jenisFilter)
+    return [...filtered].sort((a, b) => b.pekan_stagnan - a.pekan_stagnan)
+  }, [allStagnan, jenisFilter])
 
-  if (stagnanList === null) {
+  const berat = useMemo(() => stagnanList.filter(s => s.pekan_stagnan >= 5), [stagnanList])
+  const sedang = useMemo(() => stagnanList.filter(s => s.pekan_stagnan < 5), [stagnanList])
+
+  if (allStagnan === null) {
     return (
       <SidebarShell navItems={NAV} roleLabel="Kepala Sekolah" backTo="/kepsek">
         <div className="text-center py-16 text-sr-400">Memuat...</div>
@@ -83,6 +92,20 @@ function KepsekPrioritas() {
           <span className="px-3 py-1 bg-red-50 text-red-700 text-sm rounded-full font-medium">{berat.length} Berat</span>
           <span className="px-3 py-1 bg-orange-50 text-orange-700 text-sm rounded-full font-medium">{sedang.length} Sedang</span>
         </div>
+      </div>
+
+      <div className="flex gap-2 mb-6">
+        {JENIS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setJenisFilter(opt.value)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              jenisFilter === opt.value ? 'bg-sr-700 text-white' : 'bg-white text-sr-600 border border-gray-200 hover:bg-sr-50'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {stagnanList.length === 0 && (

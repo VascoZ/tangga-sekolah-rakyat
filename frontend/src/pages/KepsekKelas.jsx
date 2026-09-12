@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Building2, BarChart3 } from 'lucide-react'
+import { AlertTriangle, Building2, BarChart3, Search } from 'lucide-react'
 import { tanggaApi } from '../lib/api'
 import { toRosterView } from '../lib/roster'
 import SidebarShell from '../components/SidebarShell'
+import TanggaFilterBar, { matchesTanggaFilter, matchesSearch } from '../components/TanggaFilterBar'
+import EmptyState from '../components/EmptyState'
 
 const TANGGA_COLORS = ['bg-tangga-0', 'bg-tangga-1', 'bg-tangga-2', 'bg-tangga-3', 'bg-tangga-4', 'bg-tangga-5', 'bg-tangga-6']
 
@@ -17,10 +19,17 @@ const KELAS_ID = 1
 
 function KepsekKelas() {
   const [roster, setRoster] = useState(null)
+  const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState('semua')
 
   useEffect(() => {
     tanggaApi.getRosterKelas(KELAS_ID).then((data) => setRoster(data.map(toRosterView))).catch(() => setRoster([]))
   }, [])
+
+  const filteredRoster = useMemo(
+    () => (roster || []).filter((s) => matchesSearch(s, search) && matchesTanggaFilter(s, filter)),
+    [roster, search, filter]
+  )
 
   const sebaran = useMemo(() => {
     if (!roster) return []
@@ -94,6 +103,10 @@ function KepsekKelas() {
             </div>
 
             <h3 className="font-medium text-sr-900 mb-3">👥 Daftar Siswa</h3>
+            <TanggaFilterBar search={search} onSearchChange={setSearch} filter={filter} onFilterChange={setFilter} className="mb-4 !shadow-none !p-0" />
+            {filteredRoster.length === 0 ? (
+              <EmptyState icon={Search} title="Tidak ada siswa yang cocok" description="Coba ubah kata kunci atau filter tangga." />
+            ) : (
             <div className="overflow-x-auto -mx-6 px-6">
               <table className="w-full text-sm">
                 <thead className="bg-sr-50">
@@ -108,7 +121,7 @@ function KepsekKelas() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {roster.map((s) => (
+                  {filteredRoster.map((s) => (
                     <tr key={s.id} className="hover:bg-sr-50">
                       <td className="px-3 py-2 text-sr-500 font-mono text-xs">{s.kode.replace('SR-001-', '')}</td>
                       <td className="px-3 py-2 font-medium text-sr-900">{s.nama}</td>
@@ -134,6 +147,7 @@ function KepsekKelas() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </div>
       )}
