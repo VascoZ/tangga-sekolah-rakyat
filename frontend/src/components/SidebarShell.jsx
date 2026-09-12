@@ -77,7 +77,7 @@ function SidebarShell({ navItems, roleLabel, orgLabel = 'Sekolah Rakyat', backTo
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-64 bg-white shadow-sm min-h-screen flex-col flex-shrink-0">
+      <aside className="hidden md:flex w-64 bg-white shadow-sm h-screen sticky top-0 flex-col flex-shrink-0 overflow-y-auto">
         <Brand />
         <NavList />
         <AccountFooter />
