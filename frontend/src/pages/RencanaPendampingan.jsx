@@ -1,93 +1,95 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../lib/auth'
-import { DEMO_SISWA_KELAS_A, DUMMY_RENCANA } from '../lib/demoData'
-import { Sparkles, ChevronLeft, CheckCircle2, RefreshCw, Eye } from 'lucide-react'
+import { tanggaApi, rencanaApi } from '../lib/api'
+import { toRosterView } from '../lib/roster'
 import { useToast } from '../components/ToastProvider'
+import { Sparkles, ChevronLeft, CheckCircle2, RefreshCw, Eye } from 'lucide-react'
 
 const TANGGA_COLORS_BG = ['bg-tangga-0', 'bg-tangga-1', 'bg-tangga-2', 'bg-tangga-3', 'bg-tangga-4', 'bg-tangga-5', 'bg-tangga-6']
 const TANGGA_LABELS = ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata', 'Membaca Kalimat', 'Membaca Paragraf', 'Memahami Bacaan']
 
 function RencanaPendampingan() {
-  const { peran } = useAuthStore()
+  const { peran, user } = useAuthStore()
   const toast = useToast()
   const [searchParams] = useSearchParams()
   const kodeSearch = searchParams.get('siswa') || ''
   const isKepsek = peran === 'kepala_sekolah' || peran === 'pengelola'
+  const kelasId = user?.kelas?.id || 1
 
+  const [roster, setRoster] = useState(null)
   const [selectedSiswa, setSelectedSiswa] = useState(null)
-  const [rencana, setRencana] = useState(null)
+  const [rencanaHistory, setRencanaHistory] = useState(null) // list, newest first
   const [generating, setGenerating] = useState(false)
   const [checklist, setChecklist] = useState([])
   const [catatan, setCatatan] = useState('')
-
-  const siswaDenganRencana = DEMO_SISWA_KELAS_A.filter(s => DUMMY_RENCANA[s.kode])
+  const [savingCatatan, setSavingCatatan] = useState(false)
 
   useEffect(() => {
-    if (kodeSearch) {
-      const found = DEMO_SISWA_KELAS_A.find(
-        s => s.kode === kodeSearch || s.kode.replace('SR-001-', 'SR-') === kodeSearch
-      )
-      if (found) {
-        setSelectedSiswa(found)
-        const dummy = DUMMY_RENCANA[found.kode]
-        if (dummy) loadExistingPlan(found, dummy)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kodeSearch])
+    tanggaApi.getRosterKelas(kelasId).then((data) => setRoster(data.map(toRosterView))).catch(() => setRoster([]))
+  }, [kelasId])
 
-  const loadExistingPlan = (siswa, dummy) => {
-    const tingkat = siswa.tanggaLit ?? 0
-    setRencana({
-      mingguKe: 3,
-      targetTangga: Math.min(tingkat + 1, 6),
-      indikator: `Siswa dapat ${TANGGA_LABELS[Math.min(tingkat + 1, 6)].toLowerCase()} tanpa bantuan mengeja.`,
-      kegiatan: dummy.kegiatan,
-      dibuatOleh: dummy.dibuatOleh,
-      dibuatTanggal: dummy.dibuatTanggal,
-      status: dummy.status,
-    })
-    setChecklist(dummy.kegiatan.map((k, i) => k.selesai ? i : -1).filter(i => i >= 0))
-    setCatatan(dummy.catatan || '')
+  useEffect(() => {
+    if (!roster || !kodeSearch) return
+    const found = roster.find(s => s.kode === kodeSearch || s.kode.replace('SR-001-', 'SR-') === kodeSearch)
+    if (found) selectSiswa(found)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, kodeSearch])
+
+  const loadRencana = (siswaId) => {
+    rencanaApi.getBySiswa(siswaId).then((list) => {
+      setRencanaHistory(list)
+      const aktif = list[0] || null
+      setChecklist(aktif ? aktif.kegiatan.map((k, i) => (k.selesai ? i : -1)).filter(i => i >= 0) : [])
+      setCatatan(aktif?.catatan_guru || '')
+    }).catch(() => setRencanaHistory([]))
   }
 
-  const handleGenerate = () => {
+  const selectSiswa = (siswa) => {
+    setSelectedSiswa(siswa)
+    setRencanaHistory(null)
+    loadRencana(siswa.id)
+  }
+
+  const rencana = rencanaHistory?.[0] || null
+
+  const handleGenerate = async () => {
     if (!selectedSiswa) return
     setGenerating(true)
-    const tingkat = selectedSiswa.tanggaLit ?? 0
-    const target = Math.min(tingkat + 1, 6)
-
-    setTimeout(() => {
-      setRencana({
-        mingguKe: 3,
-        targetTangga: target,
-        indikator: `Siswa dapat ${TANGGA_LABELS[target].toLowerCase()} tanpa bantuan.`,
-        kegiatan: [
-          { hari: 'Senin', kegiatan: `Latihan ${TANGGA_LABELS[tingkat]}`, durasi: 15, instruksi: 'Gunakan bahan ajar yang disiapkan. Fokus pengulangan.', selesai: false },
-          { hari: 'Selasa', kegiatan: 'Latihan dengan Variasi', durasi: 15, instruksi: 'Ganti media: kartu, lagu, atau permainan.', selesai: false },
-          { hari: 'Rabu', kegiatan: 'Aktivitas Motorik', durasi: 20, instruksi: 'Menggunting, menempel, atau menulis.', selesai: false },
-          { hari: 'Kamis', kegiatan: 'Latihan Mandiri', durasi: 15, instruksi: 'Biarkan siswa mencoba sendiri. Catat kesulitan.', selesai: false },
-          { hari: 'Jumat', kegiatan: 'Evaluasi Mingguan', durasi: 20, instruksi: `Cek: ${TANGGA_LABELS[target].toLowerCase()}. Catat kemajuan.`, selesai: false },
-        ],
-        dibuatOleh: 'Guru (Baru)',
-        dibuatTanggal: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
-        status: 'aktif',
-      })
-      setChecklist([])
-      setCatatan('')
-      setGenerating(false)
+    try {
+      await rencanaApi.generate(selectedSiswa.id)
       toast.success(`Rencana pendampingan untuk ${selectedSiswa.nama} siap.`)
-    }, 2000)
+      loadRencana(selectedSiswa.id)
+    } catch (err) {
+      toast.error(`Gagal generate rencana: ${err.message}`)
+    } finally {
+      setGenerating(false)
+    }
   }
 
-  const toggleCheck = (idx) => {
-    if (isKepsek) return
-    setChecklist(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx])
+  const toggleCheck = async (idx) => {
+    if (isKepsek || !rencana) return
+    const next = checklist.includes(idx) ? checklist.filter(i => i !== idx) : [...checklist, idx]
+    setChecklist(next)
+    try {
+      await rencanaApi.update(rencana.id, { checklist: next })
+    } catch (err) {
+      toast.error(`Gagal menyimpan checklist: ${err.message}`)
+      setChecklist(checklist) // revert
+    }
   }
 
-  const handleSimpanCatatan = () => {
-    toast.success('Catatan guru disimpan.')
+  const handleSimpanCatatan = async () => {
+    if (!rencana) return
+    setSavingCatatan(true)
+    try {
+      await rencanaApi.update(rencana.id, { catatan_guru: catatan })
+      toast.success('Catatan guru disimpan.')
+    } catch (err) {
+      toast.error(`Gagal menyimpan catatan: ${err.message}`)
+    } finally {
+      setSavingCatatan(false)
+    }
   }
 
   const backTo = isKepsek ? '/kepsek' : '/guru'
@@ -115,56 +117,54 @@ function RencanaPendampingan() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         {/* Pilih Siswa */}
         <div className="bg-white rounded-xl p-5 shadow-card mb-6">
-          <h2 className="font-medium text-sr-900 mb-3">
-            {isKepsek ? 'Siswa dengan Rencana Aktif' : 'Pilih Siswa'}
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-            {DEMO_SISWA_KELAS_A.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => {
-                  setSelectedSiswa(s)
-                  const dummy = DUMMY_RENCANA[s.kode]
-                  if (dummy) loadExistingPlan(s, dummy)
-                  else { setRencana(null); setChecklist([]) }
-                }}
-                className={`p-3 rounded-lg border-2 text-left transition-all ${
-                  selectedSiswa?.id === s.id ? 'border-sr-700 bg-sr-50' : 'border-gray-200 hover:border-sr-300'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm text-sr-900">{s.nama}</span>
-                  {DUMMY_RENCANA[s.kode] && (
-                    <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded">✓</span>
+          <h2 className="font-medium text-sr-900 mb-3">Pilih Siswa</h2>
+          {roster === null ? (
+            <div className="text-sr-400 text-sm py-4">Memuat daftar siswa...</div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {roster.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => selectSiswa(s)}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${
+                    selectedSiswa?.id === s.id ? 'border-sr-700 bg-sr-50' : 'border-gray-200 hover:border-sr-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm text-sr-900">{s.nama}</span>
+                    {s.stagnan > 0 && <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">⚠</span>}
+                  </div>
+                  <div className="text-xs text-sr-500">{s.kode.replace('SR-001-', 'SR-')}</div>
+                  {s.tanggaLit !== null && (
+                    <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs text-white ${TANGGA_COLORS_BG[s.tanggaLit]}`}>
+                      T{s.tanggaLit}
+                    </span>
                   )}
-                </div>
-                <div className="text-xs text-sr-500">{s.kode.replace('SR-001-', 'SR-')}</div>
-                {s.tanggaLit !== null && (
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs text-white ${TANGGA_COLORS_BG[s.tanggaLit]}`}>
-                    T{s.tanggaLit}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Belum pilih */}
-        {!selectedSiswa && (
+        {!selectedSiswa && roster !== null && (
           <div className="text-center py-16 text-sr-400">
             Pilih siswa di atas untuk {isKepsek ? 'melihat' : 'membuat'} rencana pendampingan.
           </div>
         )}
 
+        {selectedSiswa && rencanaHistory === null && (
+          <div className="text-center py-16 text-sr-400">Memuat rencana...</div>
+        )}
+
         {/* Siswa tanpa rencana (guru) - generate */}
-        {selectedSiswa && !rencana && !DUMMY_RENCANA[selectedSiswa.kode] && !isKepsek && (
+        {selectedSiswa && rencanaHistory !== null && !rencana && !isKepsek && (
           <div className="text-center py-12 bg-white rounded-xl shadow-card">
             <div className="text-5xl mb-4">✨</div>
             <h2 className="font-display text-xl font-semibold text-sr-900 mb-2">
               Generate Rencana untuk {selectedSiswa.nama}
             </h2>
             <p className="text-sr-500 mb-6">
-              Tangga {selectedSiswa.tanggaLit} — {TANGGA_LABELS[selectedSiswa.tanggaLit ?? 0]}
+              Tangga {selectedSiswa.tanggaLit ?? '?'} — {TANGGA_LABELS[selectedSiswa.tanggaLit ?? 0]}
               {selectedSiswa.stagnan > 0 && ` · Stagnan ${selectedSiswa.stagnan} minggu`}
             </p>
             <button
@@ -178,7 +178,7 @@ function RencanaPendampingan() {
         )}
 
         {/* Siswa tanpa rencana (kepsek) */}
-        {selectedSiswa && !rencana && !DUMMY_RENCANA[selectedSiswa.kode] && isKepsek && (
+        {selectedSiswa && rencanaHistory !== null && !rencana && isKepsek && (
           <div className="text-center py-12 bg-white rounded-xl shadow-card">
             <div className="text-4xl mb-3">📭</div>
             <h2 className="font-display text-lg font-semibold text-sr-900 mb-2">
@@ -198,7 +198,7 @@ function RencanaPendampingan() {
                     {selectedSiswa.nama} · {selectedSiswa.kode}
                   </div>
                   <div className="text-sm text-sr-500 mt-1">
-                    Dibuat oleh: <strong>{rencana.dibuatOleh}</strong> · {rencana.dibuatTanggal}
+                    Minggu ke-{rencana.minggu_ke} · Dibuat {new Date(rencana.tgl_mulai).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </div>
                 </div>
                 <span className="px-3 py-1 bg-green-50 text-green-700 text-sm rounded-full font-medium">
@@ -206,15 +206,14 @@ function RencanaPendampingan() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
                 <div className={`px-4 py-2 rounded-lg text-white font-bold ${TANGGA_COLORS_BG[selectedSiswa.tanggaLit ?? 0]}`}>
-                  Tangga {selectedSiswa.tanggaLit}
+                  Tangga {selectedSiswa.tanggaLit ?? 0}
                 </div>
                 <span className="text-sr-400 text-xl">→</span>
-                <div className={`px-4 py-2 rounded-lg text-white font-bold ${TANGGA_COLORS_BG[rencana.targetTangga]}`}>
-                  Tangga {rencana.targetTangga}
+                <div className={`px-4 py-2 rounded-lg text-white font-bold ${TANGGA_COLORS_BG[rencana.target_tangga]}`}>
+                  Tangga {rencana.target_tangga}
                 </div>
-                <span className="text-sm text-sr-500">Minggu ke-{rencana.mingguKe}</span>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -246,11 +245,11 @@ function RencanaPendampingan() {
                       <div className="flex-1">
                         <div className="flex justify-between items-start mb-1">
                           <h3 className={`font-medium ${checklist.includes(idx) ? 'text-green-700' : 'text-sr-900'}`}>
-                            📅 {k.hari} — {k.kegiatan}
+                            📅 Hari {k.hari} — {k.kegiatan}
                           </h3>
-                          <span className="text-xs text-sr-400">{k.durasi} menit</span>
+                          <span className="text-xs text-sr-400">{k.durasi_menit} menit</span>
                         </div>
-                        <p className="text-sm text-sr-500">{k.instruksi}</p>
+                        <p className="text-sm text-sr-500">{k.instruksi_guru}</p>
                       </div>
                     </div>
                   </div>
@@ -270,8 +269,12 @@ function RencanaPendampingan() {
               />
               {!isKepsek && (
                 <div className="flex gap-4 mt-4">
-                  <button onClick={handleSimpanCatatan} className="px-4 py-2 bg-sr-700 text-white rounded-lg text-sm font-medium hover:bg-sr-900">
-                    Simpan Catatan
+                  <button
+                    onClick={handleSimpanCatatan}
+                    disabled={savingCatatan}
+                    className="px-4 py-2 bg-sr-700 text-white rounded-lg text-sm font-medium hover:bg-sr-900 disabled:opacity-50"
+                  >
+                    {savingCatatan ? 'Menyimpan...' : 'Simpan Catatan'}
                   </button>
                   <button
                     onClick={handleGenerate}
@@ -279,7 +282,7 @@ function RencanaPendampingan() {
                     className="flex items-center gap-2 px-4 py-2 border border-sr-200 text-sr-700 rounded-lg text-sm font-medium hover:bg-sr-50"
                   >
                     <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-                    {generating ? 'Menyusun...' : 'Generate Ulang'}
+                    {generating ? 'Menyusun...' : 'Generate Ulang (Minggu Baru)'}
                   </button>
                 </div>
               )}

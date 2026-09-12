@@ -10,9 +10,13 @@ const NAV = [
 function PengelolaAnalitik() {
   return (
     <SidebarShell navItems={NAV} roleLabel="Pengelola Program" orgLabel="Kemensos RI" backTo="/pengelola">
-      <div className="mb-8">
+      <div className="mb-4">
         <h1 className="font-display text-2xl font-bold text-sr-900">Analitik Pergerakan Tangga</h1>
         <p className="text-sr-500 text-sm mt-1">Tren bulanan · Heatmap distribusi · Perbandingan antar provinsi</p>
+      </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8 text-sm text-blue-800">
+        ⓘ Proyeksi <strong>ilustratif</strong> skala nasional — pilot saat ini baru berjalan di 1 sekolah,
+        lihat Kelas A di menu Kepsek untuk data sungguhan.
       </div>
 
       {/* Trend Chart */}

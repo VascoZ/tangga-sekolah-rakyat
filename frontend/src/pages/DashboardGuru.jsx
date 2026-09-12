@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { DEMO_SISWA_KELAS_A } from '../lib/demoData'
+import { useAuthStore } from '../lib/auth'
+import { tanggaApi, bahanApi } from '../lib/api'
+import { toRosterView } from '../lib/roster'
 import { ClipboardCheck, LayoutGrid, BookOpen, MessageCircle, AlertTriangle, BarChart3, Search } from 'lucide-react'
 import GuruShell from '../components/GuruShell'
 import TanggaLegend from '../components/TanggaLegend'
@@ -10,39 +12,63 @@ const TANGGA_LABELS = ['Belum Huruf', 'Mengenal Huruf', 'Suku Kata', 'Kata Utuh'
 
 function DashboardGuru() {
   const navigate = useNavigate()
+  const { user } = useAuthStore()
+  const kelasId = user?.kelas?.id || 1
   const [search, setSearch] = useState('')
+  const [roster, setRoster] = useState(null)
+  const [stagnasiList, setStagnasiList] = useState([])
+  const [temaMingguIni, setTemaMingguIni] = useState(null)
+
+  useEffect(() => {
+    tanggaApi.getRosterKelas(kelasId).then((data) => setRoster(data.map(toRosterView))).catch(() => setRoster([]))
+    tanggaApi.getStagnasi({ kelas_id: kelasId }).then(setStagnasiList).catch(() => {})
+    bahanApi.temas(kelasId).then((temas) => setTemaMingguIni(temas[0] || null)).catch(() => {})
+  }, [kelasId])
 
   const stats = useMemo(() => {
-    const total = DEMO_SISWA_KELAS_A.length
-    const sudah = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit !== null).length
-    const naik = DEMO_SISWA_KELAS_A.filter(s => s.naik > 0).length
-    const stagnan = DEMO_SISWA_KELAS_A.filter(s => s.stagnan > 0).length
-    return { totalSiswa: total, sudahAsesmen: sudah, naikMingguIni: naik, stagnasiAktif: stagnan }
-  }, [])
+    if (!roster) return { totalSiswa: 0, sudahAsesmen: 0, naikMingguIni: 0, stagnasiAktif: 0 }
+    return {
+      totalSiswa: roster.length,
+      sudahAsesmen: roster.filter(s => s.tanggaLit !== null).length,
+      naikMingguIni: roster.filter(s => s.naik > 0).length,
+      stagnasiAktif: new Set(stagnasiList.map(s => s.siswa_id)).size,
+    }
+  }, [roster, stagnasiList])
 
   const kelompok = useMemo(() => {
-    const awal = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit !== null && s.tanggaLit <= 2).length
-    const tengah = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit !== null && s.tanggaLit >= 3 && s.tanggaLit <= 4).length
-    const lanjut = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit !== null && s.tanggaLit >= 5).length
-    return { awal, tengah, lanjut }
-  }, [])
+    if (!roster) return { awal: 0, tengah: 0, lanjut: 0 }
+    return {
+      awal: roster.filter(s => s.tanggaLit !== null && s.tanggaLit <= 2).length,
+      tengah: roster.filter(s => s.tanggaLit !== null && s.tanggaLit >= 3 && s.tanggaLit <= 4).length,
+      lanjut: roster.filter(s => s.tanggaLit !== null && s.tanggaLit >= 5).length,
+    }
+  }, [roster])
 
   const sebaranTangga = useMemo(() => {
     const counts = {}
-    for (let i = 0; i <= 6; i++) {
-      counts[i] = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit === i).length
-    }
-    const belum = DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit === null).length
+    for (let i = 0; i <= 6; i++) counts[i] = (roster || []).filter(s => s.tanggaLit === i).length
+    const belum = (roster || []).filter(s => s.tanggaLit === null).length
     const maxCount = Math.max(...Object.values(counts), belum, 1)
     return { counts, belum, maxCount }
-  }, [])
+  }, [roster])
 
-  const belumAsesmen = useMemo(() => DEMO_SISWA_KELAS_A.filter(s => s.tanggaLit === null), [])
-  const stagnanList = useMemo(() => DEMO_SISWA_KELAS_A.filter(s => s.stagnan >= 3), [])
+  const belumAsesmen = useMemo(() => (roster || []).filter(s => s.tanggaLit === null), [roster])
+  const stagnanList = useMemo(
+    () => stagnasiList.filter(s => s.jenis === 'LITERASI').sort((a, b) => b.pekan_stagnan - a.pekan_stagnan),
+    [stagnasiList]
+  )
 
   const handleSearch = (e) => {
     e.preventDefault()
     navigate(`/guru/siswa${search.trim() ? `?cari=${encodeURIComponent(search.trim())}` : ''}`)
+  }
+
+  if (roster === null) {
+    return (
+      <GuruShell greeting subtitle="Kelas A — SMA · Minggu ke-3">
+        <div className="text-center py-16 text-sr-400">Memuat data kelas...</div>
+      </GuruShell>
+    )
   }
 
   return (
@@ -93,7 +119,7 @@ function DashboardGuru() {
           to="/guru/asesmen"
           className="inline-block bg-sr-700 text-white px-6 py-3 rounded-lg font-medium hover:bg-sr-900 transition-colors"
         >
-          Mulai Asesmen Massal — {Math.max(belumAsesmen.length, 1)} Siswa
+          Mulai Asesmen{belumAsesmen.length > 0 ? ` — ${belumAsesmen.length} Siswa` : ''}
         </Link>
       </div>
 
@@ -143,8 +169,14 @@ function DashboardGuru() {
             Bahan Minggu Ini
           </h2>
           <div className="mb-4">
-            <div className="text-lg font-medium text-sr-900">"Lingkungan Sekitarku"</div>
-            <div className="text-sr-500 text-sm">6 tingkat · tersedia</div>
+            {temaMingguIni ? (
+              <>
+                <div className="text-lg font-medium text-sr-900">"{temaMingguIni}"</div>
+                <div className="text-sr-500 text-sm">tersedia</div>
+              </>
+            ) : (
+              <div className="text-sr-500 text-sm">Belum ada bahan ajar dibuat.</div>
+            )}
           </div>
           <Link
             to="/guru/bahan"
@@ -170,7 +202,7 @@ function DashboardGuru() {
         <div className="space-y-1.5">
           {[6, 5, 4, 3, 2, 1, 0].map((t) => {
             const count = sebaranTangga.counts[t]
-            const pct = Math.round((count / stats.totalSiswa) * 100)
+            const pct = stats.totalSiswa ? Math.round((count / stats.totalSiswa) * 100) : 0
             const barW = Math.max((count / sebaranTangga.maxCount) * 100, 2)
             return (
               <div key={t} className="flex items-center gap-2 text-sm">
@@ -201,9 +233,9 @@ function DashboardGuru() {
           </h2>
           <div className="space-y-2">
             {stagnanList.map((s) => (
-              <div key={s.id} className="flex justify-between items-center gap-3">
-                <span className="text-sr-700">{s.kode.replace('SR-001-', 'SR-')} {s.nama} · T{s.tanggaLit} · {s.stagnan} minggu</span>
-                <Link to={`/guru/rencana?siswa=${s.kode}`} className="text-sm text-orange-700 hover:text-orange-900 font-medium flex-shrink-0">
+              <div key={s.siswa_id} className="flex justify-between items-center gap-3">
+                <span className="text-sr-700">{s.siswa_kode} {s.siswa_nama} · T{s.tangga} · {s.pekan_stagnan} minggu</span>
+                <Link to={`/guru/rencana?siswa=${s.siswa_kode}`} className="text-sm text-orange-700 hover:text-orange-900 font-medium flex-shrink-0">
                   Buat Rencana
                 </Link>
               </div>

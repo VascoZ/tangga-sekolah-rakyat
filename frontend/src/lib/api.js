@@ -68,6 +68,17 @@ export const tanggaApi = {
 
   getRosterKelas: (kelasId) =>
     fetchApi(`/tangga/kelas/${kelasId}/siswa`),
+
+  getStagnasi: (params = {}) => {
+    const query = new URLSearchParams(params).toString()
+    return fetchApi(`/tangga/stagnasi${query ? `?${query}` : ''}`)
+  },
+
+  getRiwayatSiswa: (siswaId, jenis = 'LITERASI') =>
+    fetchApi(`/tangga/riwayat/siswa/${siswaId}?jenis=${jenis}`),
+
+  getRiwayatKelompok: (kelasId, jenis = 'LITERASI') =>
+    fetchApi(`/tangga/riwayat/kelompok?kelas_id=${kelasId}&jenis=${jenis}`),
 }
 
 // Siswa
@@ -78,30 +89,36 @@ export const siswaApi = {
 
 // Bahan Ajar
 export const bahanApi = {
-  generate: (tema, kelasId, tingkat = null) => 
+  generate: (tema, kelasId, tingkat = null) =>
     fetchApi('/bahan/generate', { method: 'POST', body: JSON.stringify({ tema, kelas_id: kelasId, tingkat }) }),
-  
+
   list: (params = {}) => {
     const query = new URLSearchParams(params).toString()
     return fetchApi(`/bahan/list${query ? `?${query}` : ''}`)
   },
-  
-  get: (bahanId) => 
+
+  get: (bahanId) =>
     fetchApi(`/bahan/${bahanId}`),
+
+  temas: (kelasId) =>
+    fetchApi(`/bahan/temas?kelas_id=${kelasId}`),
 }
 
 // Rencana
 export const rencanaApi = {
-  generate: (siswaId) => 
+  generate: (siswaId) =>
     fetchApi('/rencana/generate', { method: 'POST', body: JSON.stringify({ siswa_id: siswaId }) }),
-  
-  getBySiswa: (siswaId) => 
+
+  getBySiswa: (siswaId) =>
     fetchApi(`/rencana/siswa/${siswaId}`),
-  
+
   getByKelas: (kelasId, mingguKe = null) => {
     const query = mingguKe ? `?minggu_ke=${mingguKe}` : ''
     return fetchApi(`/rencana/kelas/${kelasId}${query}`)
   },
+
+  update: (rencanaId, data) =>
+    fetchApi(`/rencana/${rencanaId}`, { method: 'PATCH', body: JSON.stringify(data) }),
 }
 
 // Chat

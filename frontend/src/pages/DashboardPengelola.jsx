@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TrendingUp, BarChart3, MapPin, AlertTriangle, School, GraduationCap, DollarSign } from 'lucide-react'
+import { tanggaApi } from '../lib/api'
 import SidebarShell from '../components/SidebarShell'
 
 const NAV = [
@@ -9,20 +11,23 @@ const NAV = [
 ]
 
 function DashboardPengelola() {
+  const [agregat, setAgregat] = useState(null)
+  useEffect(() => { tanggaApi.getAgregat().then(setAgregat).catch(() => {}) }, [])
+
   return (
     <SidebarShell navItems={NAV} roleLabel="Pengelola Program" orgLabel="Kemensos RI">
       <div className="mb-8">
         <h1 className="font-display text-2xl font-bold text-sr-900">Dashboard Pengelola — Program Sekolah Rakyat</h1>
-        <p className="text-sr-500 text-sm">Kemensos RI · TA 2026/2027 · Data per 10 Agustus 2026</p>
+        <p className="text-sr-500 text-sm">Kemensos RI · TA 2026/2027 · Pilot: 1 sekolah aktif</p>
       </div>
 
-      {/* Top Stats */}
+      {/* Top Stats - real counts from the one pilot school in the database */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
         {[
-          { label: 'Siswa Baru 2026', value: '5.130', icon: <GraduationCap className="w-6 h-6 text-sr-700" /> },
-          { label: 'Sekolah Aktif', value: '19', icon: <School className="w-6 h-6 text-green-700" /> },
-          { label: 'Guru Baru 2026', value: '3.000+', icon: <UsersIcon className="w-6 h-6 text-orange-700" /> },
-          { label: 'Anggaran 2026', value: 'Rp 4 T', icon: <DollarSignIcon className="w-6 h-6 text-purple-700" /> },
+          { label: 'Total Siswa (Pilot)', value: agregat?.total_siswa ?? '—', icon: <GraduationCap className="w-6 h-6 text-sr-700" /> },
+          { label: 'Sekolah Aktif', value: agregat?.total_sekolah ?? '—', icon: <School className="w-6 h-6 text-green-700" /> },
+          { label: 'Guru Aktif', value: agregat?.total_guru ?? '—', icon: <UsersIcon className="w-6 h-6 text-orange-700" /> },
+          { label: 'Target Skala Nasional', value: '500 sekolah', icon: <DollarSignIcon className="w-6 h-6 text-purple-700" /> },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl p-6 shadow-card">
             <div className="flex items-center gap-3 mb-3">{s.icon}</div>
@@ -30,6 +35,11 @@ function DashboardPengelola() {
             <div className="text-sm text-sr-500 mt-1">{s.label}</div>
           </div>
         ))}
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8 text-sm text-blue-800">
+        ⓘ Angka di atas real dari database pilot (1 sekolah). Grafik multi-provinsi di bawah bersifat <strong>ilustratif</strong> —
+        proyeksi skala nasional yang belum punya data sungguhan di tahap pilot ini.
       </div>
 
       {/* Charts Grid */}

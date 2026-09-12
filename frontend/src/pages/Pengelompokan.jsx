@@ -1,28 +1,52 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { LayoutGrid, BookOpen, Sparkles, RefreshCw } from 'lucide-react'
+import { useAuthStore } from '../lib/auth'
+import { tanggaApi, bahanApi } from '../lib/api'
 import GuruShell from '../components/GuruShell'
 import TanggaLegend from '../components/TanggaLegend'
 import { useToast } from '../components/ToastProvider'
 
 const TANGGA_COLORS = ['bg-tangga-0', 'bg-tangga-1', 'bg-tangga-2', 'bg-tangga-3', 'bg-tangga-4', 'bg-tangga-5', 'bg-tangga-6']
 
-// Mock data
-const KELOMPOK = {
-  awal: { nama: 'Awal (T0-2)', siswa: ['SR-001-0002', 'SR-001-0007', 'SR-001-0001', 'SR-001-0009'], stagnan: 2 },
-  tengah: { nama: 'Tengah (T3-4)', siswa: ['SR-001-0003', 'SR-001-0004', 'SR-001-0008'], stagnan: 0 },
-  lanjut: { nama: 'Lanjut (T5-6)', siswa: ['SR-001-0005', 'SR-001-0006'], stagnan: 0 },
+const KELOMPOK_META = {
+  awal: { nama: 'Awal (T0-2)', icon: '▲', bg: 'bg-tangga-0' },
+  tengah: { nama: 'Tengah (T3-4)', icon: '█', bg: 'bg-tangga-3' },
+  lanjut: { nama: 'Lanjut (T5-6)', icon: '◆', bg: 'bg-tangga-6' },
 }
 
 function Pengelompokan() {
   const navigate = useNavigate()
   const toast = useToast()
+  const { user } = useAuthStore()
+  const kelasId = user?.kelas?.id || 1
+  const [data, setData] = useState(null)
   const [reordering, setReordering] = useState(false)
   const [generatingAll, setGeneratingAll] = useState(false)
+  const [generatingKelompok, setGeneratingKelompok] = useState(null)
 
-  const generateBahanUntuk = (nama) => {
-    toast.success(`Menyusun bahan ajar untuk kelompok ${nama}...`)
-    navigate('/guru/bahan')
+  const load = () => {
+    tanggaApi.getKelas(kelasId).then(setData).catch(() => toast.error('Gagal memuat pengelompokan.'))
+  }
+  useEffect(load, [kelasId])
+
+  const totalSiswa = data ? Object.values(data.kelompok).reduce((n, arr) => n + arr.length, 0) : 0
+
+  const generateBahanUntuk = async (key, kelompok) => {
+    setGeneratingKelompok(key)
+    try {
+      const tingkatList = kelompok.nama.match(/T(\d)-(\d)/)
+      const tingkat = tingkatList
+        ? Array.from({ length: +tingkatList[2] - +tingkatList[1] + 1 }, (_, i) => +tingkatList[1] + i)
+        : undefined
+      await bahanApi.generate('Lingkungan Sekitarku', kelasId, tingkat)
+      toast.success(`Bahan ajar untuk kelompok ${KELOMPOK_META[key].nama} disiapkan.`)
+      navigate('/guru/bahan')
+    } catch (err) {
+      toast.error(`Gagal generate bahan: ${err.message}`)
+    } finally {
+      setGeneratingKelompok(null)
+    }
   }
 
   const aturUlangKelompok = () => {
@@ -30,87 +54,97 @@ function Pengelompokan() {
     setTimeout(() => {
       setReordering(false)
       toast.success('Kelompok diperbarui berdasarkan hasil asesmen terbaru.')
-    }, 900)
+      load()
+    }, 600)
   }
 
-  const generateSemuaBahan = () => {
+  const generateSemuaBahan = async () => {
     setGeneratingAll(true)
-    setTimeout(() => {
-      setGeneratingAll(false)
-      toast.success('Bahan ajar untuk 3 kelompok siap ditinjau.')
+    try {
+      await bahanApi.generate('Lingkungan Sekitarku', kelasId)
+      toast.success('Bahan ajar untuk semua tingkat siap ditinjau.')
       navigate('/guru/bahan')
-    }, 1200)
+    } catch (err) {
+      toast.error(`Gagal generate bahan: ${err.message}`)
+    } finally {
+      setGeneratingAll(false)
+    }
+  }
+
+  if (!data) {
+    return (
+      <GuruShell title="Pengelompokan Kelas — Kelas A (SMA)" subtitle="Memuat...">
+        <div className="text-center py-16 text-sr-400">Memuat pengelompokan...</div>
+      </GuruShell>
+    )
   }
 
   return (
-    <GuruShell title="Pengelompokan Kelas — Kelas A (SMA)" subtitle="Minggu ke-3 · Tema: Lingkungan Sekitarku">
+    <GuruShell title="Pengelompokan Kelas — Kelas A (SMA)" subtitle="Minggu ke-3">
       <div className="mb-4">
         <TanggaLegend jenis="LITERASI" />
       </div>
 
       {/* Kelompok Cards */}
       <div className="grid md:grid-cols-3 gap-6 mb-8">
-        {Object.entries(KELOMPOK).map(([key, kelompok]) => (
-          <div key={key} className="bg-white rounded-xl shadow-card overflow-hidden">
-            <div className={`${key === 'awal' ? 'bg-tangga-0' : key === 'tengah' ? 'bg-tangga-3' : 'bg-tangga-6'} text-white p-4`}>
-              <div className="font-display font-semibold">
-                {key === 'awal' ? '▲' : key === 'tengah' ? '█' : '◆'} {kelompok.nama}
-              </div>
-              <div className="text-sm opacity-90">
-                {kelompok.siswa.length} siswa
-              </div>
-            </div>
-            <div className="p-4">
-              <div className="space-y-2 mb-4">
-                {kelompok.siswa.map((kode, idx) => (
-                  <div key={idx} className="flex justify-between items-center text-sm">
-                    <span className="text-sr-600">{kode}</span>
-                    <span className="text-xs text-sr-400">T{key === 'awal' ? idx : key === 'tengah' ? idx + 3 : idx + 5}</span>
-                  </div>
-                ))}
-              </div>
-              {kelompok.stagnan > 0 && (
-                <div className="text-xs text-orange-600 mb-2">
-                  ⚠ {kelompok.stagnan} stagnan
+        {Object.entries(data.kelompok).map(([key, siswaList]) => {
+          const meta = KELOMPOK_META[key]
+          return (
+            <div key={key} className="bg-white rounded-xl shadow-card overflow-hidden">
+              <div className={`${meta.bg} text-white p-4`}>
+                <div className="font-display font-semibold">
+                  {meta.icon} {meta.nama}
                 </div>
-              )}
-              <button
-                onClick={() => generateBahanUntuk(kelompok.nama)}
-                className="w-full bg-sr-100 text-sr-700 py-2 rounded-lg font-medium hover:bg-sr-200 transition-colors flex items-center justify-center gap-2"
-              >
-                <BookOpen className="w-4 h-4" /> Generate Bahan
-              </button>
+                <div className="text-sm opacity-90">
+                  {siswaList.length} siswa
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                  {siswaList.length === 0 && <div className="text-sm text-sr-400">Belum ada siswa.</div>}
+                  {siswaList.map((s) => (
+                    <div key={s.id} className="flex justify-between items-center text-sm">
+                      <span className="text-sr-600">{s.nama || s.kode}</span>
+                      <span className="text-xs text-sr-400">{s.tingkat !== null ? `T${s.tingkat}` : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => generateBahanUntuk(key, meta)}
+                  disabled={generatingKelompok === key}
+                  className="w-full bg-sr-100 text-sr-700 py-2 rounded-lg font-medium hover:bg-sr-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {generatingKelompok === key ? <RefreshCw className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
+                  Generate Bahan
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Distribution */}
       <div className="bg-white rounded-xl p-6 shadow-card mb-6">
         <h2 className="font-display font-semibold text-sr-900 mb-4 flex items-center gap-2">
-          <LayoutGrid className="w-5 h-5" /> Distribusi Tangga (30 siswa)
+          <LayoutGrid className="w-5 h-5" /> Distribusi Tangga ({totalSiswa} siswa)
         </h2>
         <div className="space-y-2">
-          {[
-            { t: 6, count: 3, pct: 10 },
-            { t: 5, count: 5, pct: 17 },
-            { t: 4, count: 8, pct: 27 },
-            { t: 3, count: 12, pct: 40 },
-            { t: 2, count: 6, pct: 20 },
-            { t: 1, count: 4, pct: 13 },
-            { t: 0, count: 2, pct: 7 },
-          ].map((item) => (
-            <div key={item.t} className="flex items-center gap-2">
-              <span className="w-8 text-sm text-sr-500">T{item.t}</span>
-              <div className="flex-1 h-6 bg-sr-100 rounded overflow-hidden">
-                <div
-                  className={`h-full ${TANGGA_COLORS[item.t]}`}
-                  style={{ width: `${item.pct}%` }}
-                />
+          {[6, 5, 4, 3, 2, 1, 0].map((t) => {
+            const count = data.sebaran[`T${t}`] || 0
+            const pct = totalSiswa ? Math.round((count / totalSiswa) * 100) : 0
+            return (
+              <div key={t} className="flex items-center gap-2">
+                <span className="w-8 text-sm text-sr-500">T{t}</span>
+                <div className="flex-1 h-6 bg-sr-100 rounded overflow-hidden">
+                  <div
+                    className={`h-full ${TANGGA_COLORS[t]}`}
+                    style={{ width: `${Math.max(pct, count ? 3 : 0)}%`, transition: 'width 0.5s' }}
+                  />
+                </div>
+                <span className="text-sm text-sr-600">{count}</span>
               </div>
-              <span className="text-sm text-sr-600">{item.count}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

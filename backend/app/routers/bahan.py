@@ -74,17 +74,29 @@ def generate_bahan_ai(tema: str, tingkat: int) -> dict:
     # For now, return template with theme context
     
     template = TEMPLATE_BAHAN.get(tingkat, {})
-    
+
+    # Priority matters: tingkat 6 has both "teks" (the passage) and "pertanyaan"
+    # (the actual comprehension questions to ask) - falling through to "teks"
+    # first silently dropped the questions and showed the passage twice.
+    if "pertanyaan" in template:
+        konten_isi = template["pertanyaan"]
+    elif "kartu" in template:
+        konten_isi = template["kartu"]
+    elif "kalimat" in template:
+        konten_isi = template["kalimat"]
+    else:
+        konten_isi = template.get("teks", "")
+
     # Customize with theme
     konten = {
         "tingkat": tingkat,
         "label": TANGGA_LITERASI[tingkat]["label"] if tingkat < len(TANGGA_LITERASI) else "",
         "tema": tema,
         "instruksi_guru": template.get("instruksi_guru", ""),
-        "konten": template.get("kartu", template.get("kalimat", template.get("teks", ""))),
+        "konten": konten_isi,
         "latihan": template.get("latihan", ""),
     }
-    
+
     return konten
 
 
@@ -94,23 +106,54 @@ async def generate_bahan(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Generate bahan ajar untuk satu tema, semua tingkat.
+    Generate bahan ajar untuk satu tema, semua tingkat - dan simpan (upsert per
+    tema+tingkat+kelas) supaya /list dan /{id} benar-benar mengembalikannya nanti.
     """
     tingkat_list = data.tingkat if data.tingkat else list(range(7))
-    
+
     bahan = {}
     for tingkat in tingkat_list:
-        bahan[f"tingkat_{tingkat}"] = generate_bahan_ai(data.tema, tingkat)
-    
+        konten = generate_bahan_ai(data.tema, tingkat)
+        bahan[f"tingkat_{tingkat}"] = konten
+
+        result = await db.execute(
+            select(BahanAjar).where(
+                BahanAjar.tema == data.tema,
+                BahanAjar.tingkat == tingkat,
+                BahanAjar.kelas_id == data.kelas_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.konten_json = konten
+        else:
+            db.add(BahanAjar(tema=data.tema, tingkat=tingkat, konten_json=konten, kelas_id=data.kelas_id))
+
+    await db.commit()
+
     return BahanPerTingkat(
         tema=data.tema,
         bahan=bahan,
     )
 
 
+@router.get("/temas", response_model=List[str])
+async def list_temas(
+    kelas_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Daftar nama tema unik yang sudah pernah dibuat, untuk selector tema."""
+    query = select(BahanAjar.tema).distinct()
+    if kelas_id:
+        query = query.where(BahanAjar.kelas_id == kelas_id)
+    result = await db.execute(query.order_by(BahanAjar.tema))
+    return list(result.scalars().all())
+
+
 @router.get("/list", response_model=List[BahanAjarResponse])
 async def list_bahan(
     guru_id: Optional[int] = None,
+    kelas_id: Optional[int] = None,
     tema: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -118,15 +161,17 @@ async def list_bahan(
     Mendapatkan daftar bahan ajar yang sudah dibuat.
     """
     query = select(BahanAjar)
-    
+
     if guru_id:
         query = query.where(BahanAjar.dibuat_oleh == guru_id)
+    if kelas_id:
+        query = query.where(BahanAjar.kelas_id == kelas_id)
     if tema:
         query = query.where(BahanAjar.tema.ilike(f"%{tema}%"))
-    
-    result = await db.execute(query)
+
+    result = await db.execute(query.order_by(BahanAjar.tingkat))
     bahan_list = result.scalars().all()
-    
+
     return bahan_list
 
 

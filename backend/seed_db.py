@@ -45,6 +45,41 @@ DISTRIBUSI_AWAL_LITERASI = {
 }
 
 
+def generate_riwayat_literasi(final_tingkat: int, tgl_akhir: datetime, pola: str):
+    """
+    Weekly literasi history ending exactly at final_tingkat on tgl_akhir, shaped
+    by pola (see POLA_PERGERAKAN). Returns a list of (awal, akhir, tanggal) weekly
+    transitions, oldest first.
+    """
+    n = 4  # weeks of history
+    if pola == "stagnan_bawah":
+        levels = [final_tingkat] * (n + 1)
+    elif pola == "fluktuatif":
+        levels = [final_tingkat]
+        cur = final_tingkat
+        for _ in range(n):
+            cur = max(0, min(6, cur + random.choice([-1, 0, 1])))
+            levels.append(cur)
+        levels.reverse()
+        levels[-1] = final_tingkat
+    else:
+        step = {"naik_pelan": 1, "naik_sedang": 1, "naik_cepat": 2}.get(pola, 1)
+        levels = [final_tingkat]
+        cur = final_tingkat
+        for _ in range(n):
+            cur = max(0, cur - step)
+            levels.append(cur)
+        levels.reverse()
+
+    total = len(levels) - 1
+    rows = []
+    for i in range(1, len(levels)):
+        weeks_ago = total - i + 1
+        tanggal = tgl_akhir - timedelta(weeks=weeks_ago)
+        rows.append((levels[i - 1], levels[i], tanggal))
+    return rows
+
+
 async def seed_database():
     """Seed database with synthetic data"""
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -158,7 +193,34 @@ async def seed_database():
         
         await session.commit()
         print(f"Created {len(posisi_list)} posisi tangga")
-        
+
+        # Riwayat pergerakan (literasi): POLA_PERGERAKAN was defined above but never
+        # actually used anywhere - PergerakanTangga had nothing real to draw from.
+        # Generate a plausible weekly history per student, shaped by an assigned
+        # pola, ending exactly at their current seeded position.
+        pola_assignments = (
+            ["stagnan_bawah"] * 10 + ["naik_pelan"] * 25 + ["naik_sedang"] * 30
+            + ["naik_cepat"] * 15 + ["fluktuatif"] * 10
+        )
+        random.shuffle(pola_assignments)
+
+        riwayat_count = 0
+        for idx, siswa in enumerate(siswa_list):
+            posisi = posisi_list[idx]
+            pola = pola_assignments[idx % len(pola_assignments)]
+            for awal, akhir, tanggal in generate_riwayat_literasi(
+                posisi.tangga_literasi, posisi.tgl_terakhir_literasi, pola
+            ):
+                session.add(RiwayatTangga(
+                    siswa_id=siswa.id, jenis="LITERASI",
+                    tangga_awal=awal, tangga_akhir=akhir,
+                    tgl_perubahan=tanggal, lama_hari=7,
+                ))
+                riwayat_count += 1
+
+        await session.commit()
+        print(f"Created {riwayat_count} riwayat tangga entries")
+
         # Create some stagnasi markers
         stagnasi_count = 0
         for idx, siswa in enumerate(siswa_list[:10]):  # First 10 students

@@ -9,7 +9,7 @@ from typing import List, Optional
 from collections import defaultdict
 
 from app.database import get_db
-from app.models import Siswa, PosisiTangga, Kelas, Sekolah
+from app.models import Siswa, PosisiTangga, Kelas, Sekolah, Guru, PenandaStagnasi, RiwayatTangga
 from app.schemas import (
     PosisiTanggaResponse,
     PengelompokanResponse,
@@ -183,6 +183,7 @@ async def get_pengelompokan_kelas(
         siswa_data = {
             "id": siswa.id,
             "kode": siswa.kode,
+            "nama": siswa.nama,
             "tingkat": tingkat,
             "label": get_tangga_label("LITERASI", tingkat) if tingkat is not None else "Belum Asesmen",
             "pekan_ke": posisi.pekan_ke_literasi if posisi else 0,
@@ -257,23 +258,126 @@ async def get_dashboard_sekolah(
     
     # Convert to list
     sebaran_lit_list = [
-        SebaranTangga(tingkat=i, jumlah=sebaran_lit[f"T{i}"], label=TANGGA_LITERASI[i]["label"])
+        SebaranTangga(tangga=i, jumlah=sebaran_lit[f"T{i}"], label=TANGGA_LITERASI[i]["label"])
         for i in range(7)
     ]
     sebaran_num_list = [
-        SebaranTangga(tingkat=i, jumlah=sebaran_num[f"T{i}"], label=TANGGA_NUMERASI[i]["label"])
+        SebaranTangga(tangga=i, jumlah=sebaran_num[f"T{i}"], label=TANGGA_NUMERASI[i]["label"])
         for i in range(6)
     ]
     
+    naik_minggu_ini = sum(
+        1 for _, posisi in rows
+        if posisi and posisi.tangga_literasi is not None and posisi.pekan_ke_literasi == 1
+    )
+    result = await db.execute(
+        select(func.count(PenandaStagnasi.id))
+        .where(PenandaStagnasi.siswa_id.in_([s.id for s, _ in rows]), PenandaStagnasi.status == "aktif")
+    )
+    stagnan_aktif = result.scalar() or 0
+
     return DashboardKelasResponse(
         kelas_id=kelas_list[0].id if kelas_list else 0,
         kelas_nama=sekolah.nama,
         total_siswa=len(rows),
         sebaran_literasi=sebaran_lit_list,
         sebaran_numerasi=sebaran_num_list,
-        naik_minggu_ini=0,  # TODO: calculate from riwayat_tangga
-        stagnan_aktif=0,  # TODO: calculate from penanda_stagnasi
+        naik_minggu_ini=naik_minggu_ini,
+        stagnan_aktif=stagnan_aktif,
     )
+
+
+@router.get("/stagnasi", response_model=List[dict])
+async def get_stagnasi_aktif(
+    kelas_id: Optional[int] = None,
+    sekolah_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Siswa dengan penanda stagnasi aktif (dipakai oleh dashboard guru & kepsek)."""
+    query = (
+        select(PenandaStagnasi, Siswa, PosisiTangga)
+        .join(Siswa, Siswa.id == PenandaStagnasi.siswa_id)
+        .outerjoin(PosisiTangga, PosisiTangga.siswa_id == Siswa.id)
+        .where(PenandaStagnasi.status == "aktif")
+    )
+    if kelas_id:
+        query = query.where(Siswa.kelas_id == kelas_id)
+    elif sekolah_id:
+        query = query.join(Kelas, Kelas.id == Siswa.kelas_id).where(Kelas.sekolah_id == sekolah_id)
+
+    result = await db.execute(query.order_by(PenandaStagnasi.pekan_stagnan.desc()))
+
+    return [
+        {
+            "siswa_id": siswa.id,
+            "siswa_kode": siswa.kode,
+            "siswa_nama": siswa.nama,
+            "kelas_id": siswa.kelas_id,
+            "jenis": penanda.jenis,
+            "tangga": posisi.tangga_literasi if penanda.jenis == "LITERASI" else posisi.tangga_numerasi if posisi else None,
+            "pekan_stagnan": penanda.pekan_stagnan,
+            "level": penanda.level,
+            "catatan_guru": penanda.catatan_guru,
+        }
+        for penanda, siswa, posisi in result.all()
+    ]
+
+
+@router.get("/riwayat/siswa/{siswa_id}", response_model=List[dict])
+async def get_riwayat_siswa(
+    siswa_id: int,
+    jenis: str = "LITERASI",
+    db: AsyncSession = Depends(get_db),
+):
+    """Riwayat pergerakan tangga seorang siswa, urut waktu - untuk grafik per-siswa."""
+    result = await db.execute(
+        select(RiwayatTangga)
+        .where(RiwayatTangga.siswa_id == siswa_id, RiwayatTangga.jenis == jenis)
+        .order_by(RiwayatTangga.tgl_perubahan)
+    )
+    return [
+        {"tanggal": r.tgl_perubahan, "tangga_awal": r.tangga_awal, "tangga_akhir": r.tangga_akhir}
+        for r in result.scalars().all()
+    ]
+
+
+@router.get("/riwayat/kelompok", response_model=dict)
+async def get_riwayat_kelompok(
+    kelas_id: int,
+    jenis: str = "LITERASI",
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Rata-rata tingkat tangga per kelompok (awal/tengah/lanjut) dari waktu ke waktu,
+    dihitung dari riwayat_tangga sungguhan - bukan tren yang dikarang.
+    """
+    result = await db.execute(
+        select(RiwayatTangga, Siswa)
+        .join(Siswa, Siswa.id == RiwayatTangga.siswa_id)
+        .where(Siswa.kelas_id == kelas_id, RiwayatTangga.jenis == jenis)
+        .order_by(RiwayatTangga.tgl_perubahan)
+    )
+    rows = result.all()
+    if not rows:
+        return {"titik": []}
+
+    # Bucket by week (Monday-start) relative to the earliest entry.
+    earliest = min(r.tgl_perubahan for r, _ in rows).date()
+    buckets = defaultdict(lambda: defaultdict(list))  # week_idx -> kelompok -> [tangga_akhir,...]
+    for riwayat, _siswa in rows:
+        week_idx = (riwayat.tgl_perubahan.date() - earliest).days // 7
+        buckets[week_idx][tentukan_kelompok(riwayat.tangga_akhir)].append(riwayat.tangga_akhir)
+
+    titik = []
+    for week_idx in sorted(buckets.keys()):
+        entry = {"minggu": f"Mg {week_idx + 1}"}
+        for kelompok in ("awal", "tengah", "lanjut"):
+            vals = buckets[week_idx].get(kelompok, [])
+            if vals:
+                entry[kelompok] = round(sum(vals) / len(vals), 1)
+        titik.append(entry)
+
+    return {"titik": titik}
 
 
 @router.get("/agregat", response_model=dict)
@@ -285,11 +389,14 @@ async def get_agregat(
     """
     Mendapatkan statistik agregat lintas sekolah.
     """
-    # TODO: Implement proper aggregation
+    total_sekolah = (await db.execute(select(func.count(Sekolah.id)))).scalar() or 0
+    total_siswa = (await db.execute(select(func.count(Siswa.id)))).scalar() or 0
+    total_guru = (await db.execute(select(func.count(Guru.id)))).scalar() or 0
+
     return {
-        "total_sekolah": 1,
-        "total_siswa": 90,
-        "total_guru": 3,
+        "total_sekolah": total_sekolah,
+        "total_siswa": total_siswa,
+        "total_guru": total_guru,
         "rerata_waktu_naik_tangga": 2.5,
         "persen_keluar_tangga_02": 65.0,
     }
