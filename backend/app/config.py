@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_BASE_URL: Optional[str] = None
+
+    # Gemini (used by the chat assistant when set; falls back to templates otherwise)
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     
     # App
     APP_NAME: str = "TANGGA"

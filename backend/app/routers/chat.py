@@ -4,9 +4,11 @@ Chat Router - API endpoints for RAG assistant
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+from typing import List, Optional
+import httpx
 
 from app.database import get_db
+from app.config import settings
 from app.schemas import ChatTanya, ChatResponse, SumberRujukan
 
 router = APIRouter()
@@ -79,20 +81,68 @@ def simple_rag_search(pertanyaan: str) -> List[dict]:
 
 def generate_answer(pertanyaan: str, sources: List[dict]) -> str:
     """
-    Generate answer based on sources (placeholder for LLM).
+    Generate answer based on sources (template fallback - used when Gemini
+    isn't configured, or its call fails).
     """
     if not sources:
         return "Maaf, saya tidak menemukan informasi yang relevan. Silakan tanyakan hal lain atau hubungi administrator."
-    
+
     # Simple template answer
     answer = "Berdasarkan panduan:\n\n"
-    
+
     for i, src in enumerate(sources[:2], 1):
         answer += f"{i}. {src['kutipan']}\n\n"
-    
+
     answer += "Semoga membantu! Jika masih ada pertanyaan, silakan tanyakan lebih lanjut."
-    
+
     return answer
+
+
+async def generate_answer_gemini(pertanyaan: str, sources: List[dict]) -> Optional[str]:
+    """
+    Real generation via Gemini, grounded in whatever the keyword search
+    retrieved (but not limited to it - a teacher's question may not match
+    the small hardcoded knowledge base at all). Returns None on any failure
+    so the caller can fall back to the template answer instead of erroring.
+    """
+    if not settings.GEMINI_API_KEY:
+        return None
+
+    by_id = {doc["id"]: doc for doc in KNOWLEDGE_BASE}
+    konteks_parts = [f"[{by_id[s['id']]['judul']}]\n{by_id[s['id']]['konten']}" for s in sources if s["id"] in by_id]
+    konteks = "\n\n".join(konteks_parts) if konteks_parts else "(tidak ada rujukan spesifik dari basis pengetahuan internal)"
+
+    prompt = (
+        "Anda adalah asisten untuk guru di program Sekolah Rakyat (kelas literasi/numerasi "
+        "berdiferensiasi untuk siswa dari berbagai usia yang tertinggal secara akademis). "
+        "Jawab pertanyaan guru berikut secara singkat, praktis, dan dalam Bahasa Indonesia. "
+        "Gunakan konteks di bawah jika relevan, tapi boleh juga menjawab dari pengetahuan umum "
+        "kependidikan jika konteks tidak mencukupi.\n\n"
+        f"Konteks:\n{konteks}\n\n"
+        f"Pertanyaan guru: {pertanyaan}\n\n"
+        "Jawaban:"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent",
+                params={"key": settings.GEMINI_API_KEY},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    # A small thinking budget cuts response time roughly in half
+                    # (~9s -> ~4s) for a Q&A assistant that doesn't need deep
+                    # multi-step reasoning; thinkingBudget=0 is rejected by this
+                    # model outright, so a small positive budget is the floor.
+                    "generationConfig": {"thinkingConfig": {"thinkingBudget": 512}},
+                },
+            )
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception:
+        return None
 
 
 @router.post("/tanya", response_model=ChatResponse)
@@ -105,10 +155,14 @@ async def tanya(
     """
     # Search knowledge base
     sources = simple_rag_search(data.pertanyaan)
-    
-    # Generate answer
-    jawaban = generate_answer(data.pertanyaan, sources)
-    
+
+    # Generate answer - real Gemini generation, falling back to templates
+    jawaban = await generate_answer_gemini(data.pertanyaan, sources)
+    keyakinan = 0.9
+    if jawaban is None:
+        jawaban = generate_answer(data.pertanyaan, sources)
+        keyakinan = 0.85 if sources else 0.3
+
     # Format sources
     sumber = [
         SumberRujukan(
@@ -118,11 +172,11 @@ async def tanya(
         )
         for s in sources
     ]
-    
+
     return ChatResponse(
         jawaban=jawaban,
         sumber=sumber,
-        keyakinan=0.85 if sources else 0.3,
+        keyakinan=keyakinan,
     )
 
 
