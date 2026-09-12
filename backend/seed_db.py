@@ -133,7 +133,7 @@ async def seed_database():
         # Create posisi tangga
         for idx, siswa in enumerate(siswa_list):
             tangga_lit = tangga_assignments[idx]
-            tangga_num = max(0, tangga_lit - random.randint(0, 2))  # Numerasi biasanya lebih rendah
+            tangga_num = max(0, min(5, tangga_lit - random.randint(0, 2)))  # Numerasi: 0-5, biasanya lebih rendah
             
             posisi = PosisiTangga(
                 siswa_id=siswa.id,

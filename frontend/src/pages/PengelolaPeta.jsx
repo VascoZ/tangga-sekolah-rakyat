@@ -37,14 +37,19 @@ function PengelolaPeta() {
   const toast = useToast()
   const [selected, setSelected] = useState(null)
 
-  // Simple map: center roughly on Indonesia (Jakarta area), show pins using absolute positioning
-  // In production use Leaflet. For demo, use a stylized grid map.
+  // Simple map: project onto a stylized grid sized to fit every seeded school,
+  // instead of a hardcoded Java-centric window (which used to clip Medan/Deli
+  // Serdang off the left edge and put Jayapura off-screen to the right).
+  // In production use Leaflet.
   const mapWidth = 800
   const mapHeight = 500
-  const centerLat = -3
-  const centerLng = 112
-  const spanLat = 12
-  const spanLng = 25
+  const lats = SEKOLAH_DATA.map((s) => s.lat)
+  const lngs = SEKOLAH_DATA.map((s) => s.lng)
+  const PADDING = 0.15
+  const spanLat = (Math.max(...lats) - Math.min(...lats)) * (1 + PADDING * 2) || 1
+  const spanLng = (Math.max(...lngs) - Math.min(...lngs)) * (1 + PADDING * 2) || 1
+  const centerLat = (Math.max(...lats) + Math.min(...lats)) / 2
+  const centerLng = (Math.max(...lngs) + Math.min(...lngs)) / 2
 
   const projectToMap = (lat, lng) => {
     const x = ((lng - (centerLng - spanLng / 2)) / spanLng) * mapWidth

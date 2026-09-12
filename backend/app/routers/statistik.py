@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.database import get_db
-from app.models import Siswa, PosisiTangga, Kelas, Sekolah
+from app.models import Siswa, PosisiTangga, Kelas, Sekolah, Guru
 from app.schemas import StatistikSekolah, StatistikAgregat, SebaranTangga
 from app.tangga.definisi import TANGGA_LITERASI, TANGGA_NUMERASI
 
@@ -52,18 +52,20 @@ async def get_statistik_sekolah(
     
     for siswa_id, posisi in rows:
         if posisi:
+            # Clamp defensively: tangga_literasi/numerasi are only ever meant
+            # to hold 0-6 / 0-5, but don't let a bad row 500 this endpoint.
             if posisi.tangga_literasi is not None:
-                sebaran_lit[posisi.tangga_literasi] += 1
+                sebaran_lit[max(0, min(6, posisi.tangga_literasi))] += 1
             if posisi.tangga_numerasi is not None:
-                sebaran_num[posisi.tangga_numerasi] += 1
+                sebaran_num[max(0, min(5, posisi.tangga_numerasi))] += 1
     
     # Convert to list
     sebaran_lit_list = [
-        SebaranTangga(tingkat=i, jumlah=sebaran_lit[i], label=TANGGA_LITERASI[i]["label"])
+        SebaranTangga(tangga=i, jumlah=sebaran_lit[i], label=TANGGA_LITERASI[i]["label"])
         for i in range(7)
     ]
     sebaran_num_list = [
-        SebaranTangga(tingkat=i, jumlah=sebaran_num[i], label=TANGGA_NUMERASI[i]["label"])
+        SebaranTangga(tangga=i, jumlah=sebaran_num[i], label=TANGGA_NUMERASI[i]["label"])
         for i in range(6)
     ]
     
@@ -91,11 +93,15 @@ async def get_statistik_agregat(
     # Count total siswa
     result = await db.execute(select(func.count(Siswa.id)))
     total_siswa = result.scalar() or 0
-    
+
+    # Count total guru
+    result = await db.execute(select(func.count(Guru.id)))
+    total_guru = result.scalar() or 0
+
     return StatistikAgregat(
         total_sekolah=total_sekolah,
         total_siswa=total_siswa,
-        total_guru=0,  # TODO: count
+        total_guru=total_guru,
         rerata_waktu_naik_tangga=2.5,  # Placeholder
         persen_keluar_tangga_02=65.0,  # Placeholder
     )

@@ -38,7 +38,7 @@ function App() {
         <Route path="/guru/siswa" element={<ProtectedRoute peran="guru"><DaftarSiswa /></ProtectedRoute>} />
         <Route path="/guru/kelompok" element={<ProtectedRoute peran="guru"><Pengelompokan /></ProtectedRoute>} />
         <Route path="/guru/bahan" element={<ProtectedRoute peran="guru"><BahanAjar /></ProtectedRoute>} />
-        <Route path="/guru/rencana" element={<ProtectedRoute peran="guru"><RencanaPendampingan /></ProtectedRoute>} />
+        <Route path="/guru/rencana" element={<ProtectedRoute peran={['guru', 'kepala_sekolah', 'pengelola']}><RencanaPendampingan /></ProtectedRoute>} />
         <Route path="/guru/chat" element={<ProtectedRoute peran="guru"><ChatGuru /></ProtectedRoute>} />
         <Route path="/guru/pergerakan" element={<ProtectedRoute peran="guru"><PergerakanTangga /></ProtectedRoute>} />
         
@@ -61,15 +61,17 @@ function App() {
 
 function ProtectedRoute({ children, peran }) {
   const { isAuthenticated, peran: userPeran } = useAuthStore()
-  
+
   if (!isAuthenticated()) {
     return <Navigate to="/login" replace />
   }
-  
-  if (peran && userPeran !== peran && userPeran !== 'pengelola') {
+
+  // `peran` may be a single role or an array of allowed roles.
+  const allowed = Array.isArray(peran) ? peran : peran ? [peran, 'pengelola'] : null
+  if (allowed && !allowed.includes(userPeran)) {
     return <Navigate to="/" replace />
   }
-  
+
   return children
 }
 
