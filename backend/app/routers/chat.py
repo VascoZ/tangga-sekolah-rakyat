@@ -148,7 +148,10 @@ async def generate_answer_gemini(pertanyaan: str, sources: List[dict]) -> Option
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent",
-                params={"key": settings.GEMINI_API_KEY},
+                # Header instead of ?key= query param: httpx's request-logging
+                # (visible in `vercel logs`) prints the full URL but not headers,
+                # so this keeps the key out of any log line.
+                headers={"x-goog-api-key": settings.GEMINI_API_KEY},
                 json={
                     "systemInstruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
                     "contents": [{"parts": [{"text": prompt}]}],
@@ -160,10 +163,12 @@ async def generate_answer_gemini(pertanyaan: str, sources: List[dict]) -> Option
                 },
             )
         if resp.status_code != 200:
+            print(f"[gemini] chat/tanya failed: {resp.status_code} {resp.text[:500]}")
             return None
         data = resp.json()
         return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception:
+    except Exception as e:
+        print(f"[gemini] chat/tanya exception: {e!r}")
         return None
 
 

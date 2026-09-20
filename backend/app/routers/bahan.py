@@ -5,10 +5,12 @@ Bahan Ajar Router - API endpoints for generating differentiated materials
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Optional
+from typing import Dict, List, Optional
 import json
+import httpx
 
 from app.database import get_db
+from app.config import settings
 from app.models import BahanAjar, Guru, Kelas
 from app.schemas import BahanAjarGenerate, BahanAjarResponse, BahanPerTingkat
 from app.tangga.definisi import TANGGA_LITERASI
@@ -100,6 +102,102 @@ def generate_bahan_ai(tema: str, tingkat: int) -> dict:
     return konten
 
 
+def _konten_shape_valid(tingkat: int, entry: dict) -> bool:
+    """Sanity-check one tingkat's Gemini output before trusting it, so a
+    malformed entry falls back to the template instead of breaking the page."""
+    if not isinstance(entry, dict):
+        return False
+    if not all(k in entry for k in ("instruksi_guru", "konten", "latihan")):
+        return False
+    konten = entry["konten"]
+    if tingkat == 5:
+        return isinstance(konten, str) and bool(konten.strip())
+    if tingkat == 6:
+        return (
+            isinstance(konten, list) and len(konten) > 0
+            and all(isinstance(q, dict) and q.get("tanya") and q.get("jawaban") for q in konten)
+        )
+    return isinstance(konten, list) and len(konten) > 0 and all(isinstance(x, str) for x in konten)
+
+
+async def generate_bahan_ai_gemini(tema: str, tingkat_list: List[int]) -> Optional[Dict[int, dict]]:
+    """
+    Real generation via Gemini so content actually reflects the theme a
+    teacher types in, instead of the fixed template strings. Returns None
+    (whole batch) on any failure so the caller falls back to the template
+    for every tingkat; individual tingkat entries that come back malformed
+    fall back to the template too, per entry.
+    """
+    if not settings.GEMINI_API_KEY:
+        return None
+
+    tingkat_info = "\n".join(
+        f"- {t}: {TANGGA_LITERASI[t]['label']} — {TANGGA_LITERASI[t]['deskripsi']}"
+        for t in tingkat_list
+    )
+
+    prompt = f"""\
+Anda membuat bahan ajar literasi berdiferensiasi dengan tema "{tema}" untuk \
+program Sekolah Rakyat (siswa SMA yang masih belajar membaca dari nol). \
+Tingkat yang diminta:
+{tingkat_info}
+
+Semua konten HARUS terkait nyata dengan tema "{tema}" (bukan tema lain), \
+dalam Bahasa Indonesia, dan mengikuti aturan bentuk per tingkat:
+- Tingkat 0-1: daftar 5 huruf tunggal, contoh bentuk: ["A", "B", "C", "D", "E"]. \
+instruksi_guru boleh menyinggung tema untuk kata contoh, tapi konten tetap huruf.
+- Tingkat 2: daftar 5-8 suku kata pendek terkait tema.
+- Tingkat 3: daftar 5 kata utuh terkait tema.
+- Tingkat 4: daftar 5 kalimat pendek (4-6 kata) terkait tema.
+- Tingkat 5: SATU string berisi 1 paragraf pendek (3-5 kalimat) terkait tema, \
+bahasa sederhana.
+- Tingkat 6: daftar 3 objek {{"tanya": "...", "jawaban": "..."}}, pertanyaan \
+pemahaman atas sebuah bacaan singkat tentang tema tersebut.
+
+Balas HANYA dengan JSON valid (tanpa markdown, tanpa code fence), formatnya:
+{{
+  "<tingkat>": {{"instruksi_guru": "1 kalimat instruksi untuk guru", "konten": <sesuai aturan di atas>, "latihan": "1 kalimat ide latihan tambahan"}}
+}}
+
+Sertakan HANYA tingkat berikut: {", ".join(str(t) for t in tingkat_list)}.\
+"""
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent",
+                headers={"x-goog-api-key": settings.GEMINI_API_KEY},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"thinkingConfig": {"thinkingBudget": 512}},
+                },
+            )
+        if resp.status_code != 200:
+            print(f"[gemini] bahan/generate failed: {resp.status_code} {resp.text[:500]}")
+            return None
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        parsed = json.loads(text)
+    except Exception as e:
+        print(f"[gemini] bahan/generate exception: {e!r}")
+        return None
+
+    hasil: Dict[int, dict] = {}
+    for tingkat in tingkat_list:
+        entry = parsed.get(str(tingkat))
+        if _konten_shape_valid(tingkat, entry):
+            hasil[tingkat] = {
+                "tingkat": tingkat,
+                "label": TANGGA_LITERASI[tingkat]["label"] if tingkat < len(TANGGA_LITERASI) else "",
+                "tema": tema,
+                "instruksi_guru": entry["instruksi_guru"],
+                "konten": entry["konten"],
+                "latihan": entry["latihan"],
+            }
+    return hasil
+
+
 @router.post("/generate", response_model=BahanPerTingkat)
 async def generate_bahan(
     data: BahanAjarGenerate,
@@ -111,9 +209,11 @@ async def generate_bahan(
     """
     tingkat_list = data.tingkat if data.tingkat else list(range(7))
 
+    gemini_hasil = await generate_bahan_ai_gemini(data.tema, tingkat_list) or {}
+
     bahan = {}
     for tingkat in tingkat_list:
-        konten = generate_bahan_ai(data.tema, tingkat)
+        konten = gemini_hasil.get(tingkat) or generate_bahan_ai(data.tema, tingkat)
         bahan[f"tingkat_{tingkat}"] = konten
 
         result = await db.execute(
