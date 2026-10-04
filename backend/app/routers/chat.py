@@ -45,6 +45,12 @@ KNOWLEDGE_BASE = [
         "konten": "Tiga bulan pertama adalah fase paling kritis. Fokus pada: 1) Membangun kepercayaan dan rasa aman, 2) Mengetahui titik pijak setiap siswa, 3) Mengelompokkan berdasarkan kemampuan, 4) Memberi pendampingan intensif untuk siswa yang tertinggal.",
         "kategori": "strategi_guru",
     },
+    {
+        "id": 6,
+        "judul": "Strategi Numerasi untuk Siswa yang Belum Menguasai Bilangan",
+        "konten": "Tangga numerasi punya 6 tingkat (T0-T5): belum mengenal bilangan, mengenal bilangan 1-9, bilangan 10-99 dan perbandingan, penjumlahan dan pengurangan, perkalian dan pembagian, soal cerita. Untuk siswa yang tertinggal: 1) Gunakan benda konkret (kancing, batu, lidi) sebelum lambang bilangan, 2) Ajak menghitung benda di sekitar kelas, 3) Bahas soal cerita dengan menggambar dulu, lalu tentukan operasinya.",
+        "kategori": "remedial",
+    },
 ]
 
 

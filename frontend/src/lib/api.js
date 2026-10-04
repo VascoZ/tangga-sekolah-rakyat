@@ -55,8 +55,8 @@ export const tanggaApi = {
   getSiswa: (siswaId) =>
     fetchApi(`/tangga/siswa/${siswaId}`),
 
-  getKelas: (kelasId) =>
-    fetchApi(`/tangga/kelas/${kelasId}`),
+  getKelas: (kelasId, jenis = 'LITERASI') =>
+    fetchApi(`/tangga/kelas/${kelasId}?jenis=${jenis}`),
 
   getSekolah: (sekolahId) =>
     fetchApi(`/tangga/sekolah/${sekolahId}`),
@@ -89,8 +89,8 @@ export const siswaApi = {
 
 // Bahan Ajar
 export const bahanApi = {
-  generate: (tema, kelasId, tingkat = null) =>
-    fetchApi('/bahan/generate', { method: 'POST', body: JSON.stringify({ tema, kelas_id: kelasId, tingkat }) }),
+  generate: (tema, kelasId, jenis = 'LITERASI', tingkat = null) =>
+    fetchApi('/bahan/generate', { method: 'POST', body: JSON.stringify({ tema, kelas_id: kelasId, jenis, tingkat }) }),
 
   list: (params = {}) => {
     const query = new URLSearchParams(params).toString()
@@ -100,14 +100,14 @@ export const bahanApi = {
   get: (bahanId) =>
     fetchApi(`/bahan/${bahanId}`),
 
-  temas: (kelasId) =>
-    fetchApi(`/bahan/temas?kelas_id=${kelasId}`),
+  temas: (kelasId, jenis = 'LITERASI') =>
+    fetchApi(`/bahan/temas?kelas_id=${kelasId}&jenis=${jenis}`),
 }
 
 // Rencana
 export const rencanaApi = {
-  generate: (siswaId) =>
-    fetchApi('/rencana/generate', { method: 'POST', body: JSON.stringify({ siswa_id: siswaId }) }),
+  generate: (siswaId, jenis = 'LITERASI') =>
+    fetchApi('/rencana/generate', { method: 'POST', body: JSON.stringify({ siswa_id: siswaId, jenis }) }),
 
   getBySiswa: (siswaId) =>
     fetchApi(`/rencana/siswa/${siswaId}`),

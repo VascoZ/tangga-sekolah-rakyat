@@ -12,7 +12,7 @@ import { useToast } from '../components/ToastProvider'
 
 const TANGGA_LABELS = {
   LITERASI: ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata Utuh', 'Membaca Kalimat', 'Membaca Paragraf', 'Memahami Bacaan'],
-  NUMERASI: ['Belum Mengenal Bilangan', 'Mengenal Bilangan 1-9', 'Bilangan 10-99', 'Penjumlahan & Pengurangan', 'Perkalian & Pembagian', 'Soal Cerita Sederhana'],
+  NUMERASI: ['Belum Mengenal Bilangan', 'Mengenal Bilangan 1-9', 'Bilangan 10-99 & Perbandingan', 'Penjumlahan & Pengurangan', 'Perkalian & Pembagian', 'Soal Cerita Sederhana'],
 }
 
 function AsesmenMulai() {
@@ -125,7 +125,7 @@ function AsesmenMulai() {
                     Posisi: Tangga {selectedSiswa.tanggaLit ?? '?'}
                   </div>
                   <div className="text-xs text-sr-400">
-                    {TANGGA_LABELS[selectedSiswa.tanggaLit ?? 0]}
+                    {TANGGA_LABELS.LITERASI[selectedSiswa.tanggaLit ?? 0]}
                   </div>
                 </button>
                 <button
@@ -141,7 +141,7 @@ function AsesmenMulai() {
                     Posisi: Tangga {selectedSiswa.tanggaNum ?? '?'}
                   </div>
                   <div className="text-xs text-sr-400">
-                    {selectedSiswa.tanggaNum !== null ? `Tingkat ${selectedSiswa.tanggaNum}` : 'Belum asesmen'}
+                    {selectedSiswa.tanggaNum !== null ? TANGGA_LABELS.NUMERASI[selectedSiswa.tanggaNum] : 'Belum asesmen'}
                   </div>
                 </button>
               </div>

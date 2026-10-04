@@ -54,7 +54,7 @@ function DashboardGuru() {
 
   const belumAsesmen = useMemo(() => (roster || []).filter(s => s.tanggaLit === null), [roster])
   const stagnanList = useMemo(
-    () => stagnasiList.filter(s => s.jenis === 'LITERASI').sort((a, b) => b.pekan_stagnan - a.pekan_stagnan),
+    () => [...stagnasiList].sort((a, b) => b.pekan_stagnan - a.pekan_stagnan),
     [stagnasiList]
   )
 
@@ -233,8 +233,8 @@ function DashboardGuru() {
           </h2>
           <div className="space-y-2">
             {stagnanList.map((s) => (
-              <div key={s.siswa_id} className="flex justify-between items-center gap-3">
-                <span className="text-sr-700">{s.siswa_kode} {s.siswa_nama} · T{s.tangga} · {s.pekan_stagnan} minggu</span>
+              <div key={`${s.siswa_id}-${s.jenis}`} className="flex justify-between items-center gap-3">
+                <span className="text-sr-700">{s.siswa_kode} {s.siswa_nama} · {s.jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'} T{s.tangga} · {s.pekan_stagnan} minggu</span>
                 <Link to={`/guru/rencana?siswa=${s.siswa_kode}`} className="text-sm text-orange-700 hover:text-orange-900 font-medium flex-shrink-0">
                   Buat Rencana
                 </Link>

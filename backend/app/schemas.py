@@ -177,12 +177,14 @@ class DashboardKelasResponse(BaseModel):
 class BahanAjarGenerate(BaseModel):
     tema: str
     kelas_id: int
+    jenis: str = "LITERASI"
     tingkat: Optional[List[int]] = None  # jika None, generate semua
 
 
 class BahanAjarResponse(BaseModel):
     id: int
     tema: str
+    jenis: str = "LITERASI"
     tingkat: int
     konten_json: dict
     created_at: datetime
@@ -199,6 +201,7 @@ class BahanPerTingkat(BaseModel):
 # === RENCANA PENDAMPINGAN ===
 class RencanaGenerate(BaseModel):
     siswa_id: int
+    jenis: str = "LITERASI"
 
 
 class KegiatanHarian(BaseModel):

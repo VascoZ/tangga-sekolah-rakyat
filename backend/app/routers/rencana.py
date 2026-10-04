@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.models import RencanaPendampingan, Siswa, PosisiTangga
 from app.schemas import RencanaGenerate, RencanaPendampinganResponse, KegiatanHarian
-from app.tangga.definisi import get_tangga_label
+from app.tangga.definisi import get_tangga_label, TANGGA_LITERASI, TANGGA_NUMERASI
 
 router = APIRouter()
 
@@ -22,7 +22,7 @@ class RencanaUpdate(BaseModel):
     catatan_guru: Optional[str] = None
 
 
-def generate_rencana_ai(siswa_kode: str, tangga: int, target: int) -> dict:
+def generate_rencana_ai(siswa_kode: str, tangga: int, target: int, jenis: str = "LITERASI") -> dict:
     """
     Generate rencana pendampingan menggunakan AI (placeholder).
     Untuk MVP, gunakan template.
@@ -30,14 +30,14 @@ def generate_rencana_ai(siswa_kode: str, tangga: int, target: int) -> dict:
     kegiatan = [
         {
             "hari": 1,
-            "kegiatan": f"Latihan {get_tangga_label('LITERASI', tangga)}",
+            "kegiatan": f"Latihan {get_tangga_label(jenis, tangga)}",
             "durasi_menit": 15,
             "instruksi_guru": "Gunakan bahan ajar yang sudah disiapkan.",
             "selesai": False,
         },
         {
             "hari": 2,
-            "kegiatan": f"Latihan lanjutan {get_tangga_label('LITERASI', tangga)}",
+            "kegiatan": f"Latihan lanjutan {get_tangga_label(jenis, tangga)}",
             "durasi_menit": 15,
             "instruksi_guru": "Ulangi latihan dengan variasi.",
             "selesai": False,
@@ -65,7 +65,7 @@ def generate_rencana_ai(siswa_kode: str, tangga: int, target: int) -> dict:
         },
     ]
 
-    indikator = f"Siswa dapat {get_tangga_label('LITERASI', target).lower()} tanpa bantuan."
+    indikator = f"Siswa dapat {get_tangga_label(jenis, target).lower()} tanpa bantuan."
 
     return {
         "kegiatan": kegiatan,
@@ -107,15 +107,25 @@ async def generate_rencana(
     if not siswa:
         raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
 
+    if data.jenis not in ("LITERASI", "NUMERASI"):
+        raise HTTPException(status_code=400, detail="Jenis harus LITERASI atau NUMERASI")
+
     result = await db.execute(
         select(PosisiTangga).where(PosisiTangga.siswa_id == data.siswa_id)
     )
     posisi = result.scalar_one_or_none()
 
-    tangga_saat_ini = posisi.tangga_literasi if posisi and posisi.tangga_literasi is not None else 0
-    target_tangga = min(tangga_saat_ini + 1, 6)
+    if data.jenis == "NUMERASI":
+        tingkat_sekarang = posisi.tangga_numerasi if posisi else None
+        max_tingkat = len(TANGGA_NUMERASI) - 1
+    else:
+        tingkat_sekarang = posisi.tangga_literasi if posisi else None
+        max_tingkat = len(TANGGA_LITERASI) - 1
 
-    rencana_data = generate_rencana_ai(siswa.kode, tangga_saat_ini, target_tangga)
+    tangga_saat_ini = tingkat_sekarang if tingkat_sekarang is not None else 0
+    target_tangga = min(tangga_saat_ini + 1, max_tingkat)
+
+    rencana_data = generate_rencana_ai(siswa.kode, tangga_saat_ini, target_tangga, data.jenis)
 
     result = await db.execute(
         select(func.max(RencanaPendampingan.minggu_ke)).where(RencanaPendampingan.siswa_id == data.siswa_id)

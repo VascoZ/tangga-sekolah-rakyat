@@ -114,8 +114,9 @@ function DaftarSiswa() {
     >
       {/* Search & Filter */}
       <TanggaFilterBar search={search} onSearchChange={setSearch} filter={filter} onFilterChange={setFilter} />
-      <div className="mb-6 mt-2">
+      <div className="mb-6 mt-2 flex flex-wrap gap-4">
         <TanggaLegend jenis="LITERASI" />
+        <TanggaLegend jenis="NUMERASI" />
       </div>
 
       {loadError && (
@@ -186,9 +187,11 @@ function DaftarSiswa() {
                     <td className="px-4 py-3 text-sm text-sr-500">
                       {siswa.terakhir || 'Belum'}
                     </td>
-                    <td className="px-4 py-3">
-                      {siswa.naik > 0 && <span className="text-green-600 text-sm">▲{siswa.naik}</span>}
-                      {siswa.stagnan > 0 && <span className="text-orange-600 text-sm">⚠{siswa.stagnan}</span>}
+                    <td className="px-4 py-3 text-sm">
+                      {siswa.naik > 0 && <span className="text-green-600">▲{siswa.naik} lit</span>}
+                      {siswa.naikNum > 0 && <span className="text-green-600 ml-2">▲{siswa.naikNum} num</span>}
+                      {siswa.stagnan > 0 && <span className="text-orange-600 ml-2">⚠{siswa.stagnan} lit</span>}
+                      {siswa.stagnanNum > 0 && <span className="text-orange-600 ml-2">⚠{siswa.stagnanNum} num</span>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link to={`/guru/rencana?siswa=${siswa.kode}`} className="text-xs text-sr-700 hover:text-sr-900 font-medium">

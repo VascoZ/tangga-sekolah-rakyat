@@ -20,7 +20,10 @@ export function toRosterView(item) {
     tanggaLit: item.tangga_literasi,
     tanggaNum: item.tangga_numerasi,
     terakhir: timeAgo(item.tgl_terakhir_literasi),
+    terakhirNum: timeAgo(item.tgl_terakhir_numerasi),
     naik: item.pekan_ke_literasi === 1 && item.tangga_literasi !== null ? 1 : 0,
+    naikNum: item.pekan_ke_numerasi === 1 && item.tangga_numerasi !== null ? 1 : 0,
     stagnan: item.pekan_ke_literasi >= 3 ? item.pekan_ke_literasi : 0,
+    stagnanNum: item.pekan_ke_numerasi >= 3 ? item.pekan_ke_numerasi : 0,
   }
 }

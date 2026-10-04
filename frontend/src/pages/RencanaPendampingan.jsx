@@ -5,10 +5,14 @@ import { tanggaApi, rencanaApi } from '../lib/api'
 import { toRosterView } from '../lib/roster'
 import { useToast } from '../components/ToastProvider'
 import TanggaFilterBar, { matchesTanggaFilter, matchesSearch } from '../components/TanggaFilterBar'
+import JenisToggle from '../components/JenisToggle'
 import { Sparkles, ChevronLeft, CheckCircle2, RefreshCw, Eye } from 'lucide-react'
 
 const TANGGA_COLORS_BG = ['bg-tangga-0', 'bg-tangga-1', 'bg-tangga-2', 'bg-tangga-3', 'bg-tangga-4', 'bg-tangga-5', 'bg-tangga-6']
-const TANGGA_LABELS = ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata', 'Membaca Kalimat', 'Membaca Paragraf', 'Memahami Bacaan']
+const TANGGA_LABELS = {
+  LITERASI: ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata', 'Membaca Kalimat', 'Membaca Paragraf', 'Memahami Bacaan'],
+  NUMERASI: ['Belum Mengenal Bilangan', 'Mengenal Bilangan 1-9', 'Bilangan 10-99 & Perbandingan', 'Penjumlahan & Pengurangan', 'Perkalian & Pembagian', 'Soal Cerita Sederhana'],
+}
 
 function RencanaPendampingan() {
   const { peran, user } = useAuthStore()
@@ -22,6 +26,7 @@ function RencanaPendampingan() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('semua')
   const [selectedSiswa, setSelectedSiswa] = useState(null)
+  const [jenis, setJenis] = useState('LITERASI')
   const [rencanaHistory, setRencanaHistory] = useState(null) // list, newest first
   const [generating, setGenerating] = useState(false)
   const [checklist, setChecklist] = useState([])
@@ -60,7 +65,7 @@ function RencanaPendampingan() {
     if (!selectedSiswa) return
     setGenerating(true)
     try {
-      await rencanaApi.generate(selectedSiswa.id)
+      await rencanaApi.generate(selectedSiswa.id, jenis)
       toast.success(`Rencana pendampingan untuk ${selectedSiswa.nama} siap.`)
       loadRencana(selectedSiswa.id)
     } catch (err) {
@@ -120,7 +125,10 @@ function RencanaPendampingan() {
       <main className="max-w-4xl mx-auto px-4 py-6">
         {/* Pilih Siswa */}
         <div className="bg-white rounded-xl p-5 shadow-card mb-6">
-          <h2 className="font-medium text-sr-900 mb-3">Pilih Siswa</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="font-medium text-sr-900">Pilih Siswa</h2>
+            <JenisToggle value={jenis} onChange={setJenis} />
+          </div>
           {roster === null ? (
             <div className="text-sr-400 text-sm py-4">Memuat daftar siswa...</div>
           ) : (
@@ -140,9 +148,9 @@ function RencanaPendampingan() {
                     {s.stagnan > 0 && <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">⚠</span>}
                   </div>
                   <div className="text-xs text-sr-500">{s.kode.replace('SR-001-', 'SR-')}</div>
-                  {s.tanggaLit !== null && (
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs text-white ${TANGGA_COLORS_BG[s.tanggaLit]}`}>
-                      T{s.tanggaLit}
+                  {(jenis === 'NUMERASI' ? s.tanggaNum : s.tanggaLit) !== null && (
+                    <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs text-white ${TANGGA_COLORS_BG[jenis === 'NUMERASI' ? s.tanggaNum : s.tanggaLit]}`}>
+                      T{jenis === 'NUMERASI' ? s.tanggaNum : s.tanggaLit}
                     </span>
                   )}
                 </button>
@@ -170,7 +178,7 @@ function RencanaPendampingan() {
               Generate Rencana untuk {selectedSiswa.nama}
             </h2>
             <p className="text-sr-500 mb-6">
-              Tangga {selectedSiswa.tanggaLit ?? '?'} — {TANGGA_LABELS[selectedSiswa.tanggaLit ?? 0]}
+              Tangga {jenis === 'NUMERASI' ? (selectedSiswa.tanggaNum ?? '?') : (selectedSiswa.tanggaLit ?? '?')} — {TANGGA_LABELS[jenis][(jenis === 'NUMERASI' ? selectedSiswa.tanggaNum : selectedSiswa.tanggaLit) ?? 0]}
               {selectedSiswa.stagnan > 0 && ` · Stagnan ${selectedSiswa.stagnan} minggu`}
             </p>
             <button
@@ -213,8 +221,8 @@ function RencanaPendampingan() {
               </div>
 
               <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <div className={`px-4 py-2 rounded-lg text-white font-bold ${TANGGA_COLORS_BG[selectedSiswa.tanggaLit ?? 0]}`}>
-                  Tangga {selectedSiswa.tanggaLit ?? 0}
+                <div className={`px-4 py-2 rounded-lg text-white font-bold ${TANGGA_COLORS_BG[(jenis === 'NUMERASI' ? selectedSiswa.tanggaNum : selectedSiswa.tanggaLit) ?? 0]}`}>
+                  Tangga {(jenis === 'NUMERASI' ? selectedSiswa.tanggaNum : selectedSiswa.tanggaLit) ?? 0}
                 </div>
                 <span className="text-sr-400 text-xl">→</span>
                 <div className={`px-4 py-2 rounded-lg text-white font-bold ${TANGGA_COLORS_BG[rencana.target_tangga]}`}>

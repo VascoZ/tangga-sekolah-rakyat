@@ -27,7 +27,7 @@ function DashboardKepsek() {
   useEffect(() => {
     tanggaApi.getSekolah(SEKOLAH_ID).then(setDashboard).catch(() => setDashboard({ total_siswa: 0, sebaran_literasi: [], naik_minggu_ini: 0, stagnan_aktif: 0 }))
     tanggaApi.getStagnasi({ sekolah_id: SEKOLAH_ID }).then((list) =>
-      setStagnanList(list.filter(s => s.jenis === 'LITERASI').sort((a, b) => b.pekan_stagnan - a.pekan_stagnan))
+      setStagnanList([...list].sort((a, b) => b.pekan_stagnan - a.pekan_stagnan))
     ).catch(() => {})
 
     Promise.all(KELAS_IDS.map((id) =>
@@ -133,7 +133,7 @@ function DashboardKepsek() {
           <div key={`${s.siswa_id}-${s.jenis}`} className="flex justify-between items-center gap-3 p-3 bg-orange-50 rounded-lg mb-2">
             <div className="min-w-0">
               <div className="font-medium text-sr-900 text-sm truncate">{s.siswa_kode} · {s.siswa_nama}</div>
-              <div className="text-xs text-sr-500">T{s.tangga} · {s.pekan_stagnan} minggu</div>
+              <div className="text-xs text-sr-500">{s.jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'} T{s.tangga} · {s.pekan_stagnan} minggu</div>
             </div>
             <Link to={`/guru/rencana?siswa=${s.siswa_kode}`} className="text-sm text-sr-700 hover:text-sr-900 font-medium px-3 py-1.5 bg-white rounded-lg border border-sr-200 flex-shrink-0">
               Lihat Rencana

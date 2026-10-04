@@ -136,7 +136,8 @@ class BahanAjar(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     tema = Column(String(200))
-    tingkat = Column(Integer)  # 0-6
+    jenis = Column(String(10), default="LITERASI", server_default="LITERASI")  # LITERASI (0-6), NUMERASI (0-5)
+    tingkat = Column(Integer)
     konten_json = Column(JSON)
     dibuat_oleh = Column(Integer, ForeignKey("guru.id"), nullable=True)
     kelas_id = Column(Integer, ForeignKey("kelas.id"), nullable=True)

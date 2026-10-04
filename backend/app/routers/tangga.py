@@ -148,11 +148,17 @@ async def get_posisi_siswa(
 @router.get("/kelas/{kelas_id}", response_model=PengelompokanResponse)
 async def get_pengelompokan_kelas(
     kelas_id: int,
+    jenis: str = "LITERASI",
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Mendapatkan pengelompokan siswa berdasarkan tangga.
+    Mendapatkan pengelompokan siswa berdasarkan tangga (literasi atau numerasi).
     """
+    if jenis not in ("LITERASI", "NUMERASI"):
+        raise HTTPException(status_code=400, detail="Jenis harus LITERASI atau NUMERASI")
+    is_numerasi = jenis == "NUMERASI"
+    jumlah_tingkat = len(TANGGA_NUMERASI) if is_numerasi else len(TANGGA_LITERASI)
+
     # Get kelas
     result = await db.execute(select(Kelas).where(Kelas.id == kelas_id))
     kelas = result.scalar_one_or_none()
@@ -175,18 +181,18 @@ async def get_pengelompokan_kelas(
         "lanjut": [],  # T5-6
     }
     
-    sebaran = {f"T{i}": 0 for i in range(7)}
-    
+    sebaran = {f"T{i}": 0 for i in range(jumlah_tingkat)}
+
     for siswa, posisi in rows:
-        tingkat = posisi.tangga_literasi if posisi else None
-        
+        tingkat = (posisi.tangga_numerasi if is_numerasi else posisi.tangga_literasi) if posisi else None
+
         siswa_data = {
             "id": siswa.id,
             "kode": siswa.kode,
             "nama": siswa.nama,
             "tingkat": tingkat,
-            "label": get_tangga_label("LITERASI", tingkat) if tingkat is not None else "Belum Asesmen",
-            "pekan_ke": posisi.pekan_ke_literasi if posisi else 0,
+            "label": get_tangga_label(jenis, tingkat) if tingkat is not None else "Belum Asesmen",
+            "pekan_ke": (posisi.pekan_ke_numerasi if is_numerasi else posisi.pekan_ke_literasi) if posisi else 0,
         }
         
         if tingkat is not None:
