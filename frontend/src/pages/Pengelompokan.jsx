@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LayoutGrid, BookOpen, Sparkles, RefreshCw } from 'lucide-react'
+import { LayoutGrid, ClipboardList, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '../lib/auth'
-import { tanggaApi, bahanApi } from '../lib/api'
+import { tanggaApi, rencanaApi } from '../lib/api'
 import GuruShell from '../components/GuruShell'
 import TanggaLegend from '../components/TanggaLegend'
 import JenisToggle from '../components/JenisToggle'
@@ -10,7 +10,10 @@ import { useToast } from '../components/ToastProvider'
 
 const TANGGA_COLORS = ['bg-tangga-0', 'bg-tangga-1', 'bg-tangga-2', 'bg-tangga-3', 'bg-tangga-4', 'bg-tangga-5', 'bg-tangga-6']
 
-const TEMA_DEFAULT = { LITERASI: 'Lingkungan Sekitarku', NUMERASI: 'Lingkungan Sekitarku' }
+async function buatRencanaUntuk(siswaList, jenis) {
+  const hasil = await Promise.allSettled(siswaList.map((s) => rencanaApi.generate(s.id, jenis)))
+  return hasil.filter((h) => h.status === 'fulfilled').length
+}
 
 function kelompokMeta(jenis) {
   const lanjut = jenis === 'NUMERASI' ? [5, 5] : [5, 6]
@@ -47,16 +50,19 @@ function Pengelompokan() {
 
   const totalSiswa = data ? Object.values(data.kelompok).reduce((n, arr) => n + arr.length, 0) : 0
 
-  const generateBahanUntuk = async (key) => {
+  const buatRencanaKelompok = async (key) => {
+    const siswaList = data.kelompok[key]
+    if (siswaList.length === 0) {
+      toast.info(`Belum ada siswa di kelompok ${meta[key].nama}.`)
+      return
+    }
     setGeneratingKelompok(key)
     try {
-      const [lo, hi] = meta[key].rentang
-      const tingkat = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
-      await bahanApi.generate(TEMA_DEFAULT[jenis], kelasId, jenis, tingkat)
-      toast.success(`Bahan ajar ${jenis === 'NUMERASI' ? 'numerasi' : 'literasi'} untuk kelompok ${meta[key].nama} disiapkan.`)
-      navigate('/guru/bahan')
+      const jumlah = await buatRencanaUntuk(siswaList, jenis)
+      toast.success(`${jumlah} rencana pendampingan ${jenis === 'NUMERASI' ? 'numerasi' : 'literasi'} untuk kelompok ${meta[key].nama} dibuat.`)
+      navigate('/guru/rencana')
     } catch (err) {
-      toast.error(`Gagal generate bahan: ${err.message}`)
+      toast.error(`Gagal membuat rencana: ${err.message}`)
     } finally {
       setGeneratingKelompok(null)
     }
@@ -71,14 +77,19 @@ function Pengelompokan() {
     }, 600)
   }
 
-  const generateSemuaBahan = async () => {
+  const buatRencanaSemua = async () => {
+    const semua = Object.values(data.kelompok).flat()
+    if (semua.length === 0) {
+      toast.info('Belum ada siswa di kelas ini.')
+      return
+    }
     setGeneratingAll(true)
     try {
-      await bahanApi.generate(TEMA_DEFAULT[jenis], kelasId, jenis)
-      toast.success('Bahan ajar untuk semua tingkat siap ditinjau.')
-      navigate('/guru/bahan')
+      const jumlah = await buatRencanaUntuk(semua, jenis)
+      toast.success(`${jumlah} rencana pendampingan ${jenis === 'NUMERASI' ? 'numerasi' : 'literasi'} dibuat untuk semua siswa.`)
+      navigate('/guru/rencana')
     } catch (err) {
-      toast.error(`Gagal generate bahan: ${err.message}`)
+      toast.error(`Gagal membuat rencana: ${err.message}`)
     } finally {
       setGeneratingAll(false)
     }
@@ -120,12 +131,12 @@ function Pengelompokan() {
                       ))}
                     </div>
                     <button
-                      onClick={() => generateBahanUntuk(key)}
+                      onClick={() => buatRencanaKelompok(key)}
                       disabled={generatingKelompok === key}
                       className="w-full bg-sr-100 text-sr-700 py-2 rounded-lg font-medium hover:bg-sr-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                     >
-                      {generatingKelompok === key ? <RefreshCw className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
-                      Generate Bahan
+                      {generatingKelompok === key ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+                      Buat Rencana Kelompok
                     </button>
                   </div>
                 </div>
@@ -169,12 +180,12 @@ function Pengelompokan() {
               {reordering ? 'Menyusun ulang...' : 'Atur Ulang Kelompok'}
             </button>
             <button
-              onClick={generateSemuaBahan}
+              onClick={buatRencanaSemua}
               disabled={generatingAll}
               className="bg-sr-700 text-white py-3 rounded-lg font-medium hover:bg-sr-900 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              {generatingAll ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              {generatingAll ? 'AI menyusun...' : 'Generate Semua Bahan'}
+              {generatingAll ? <RefreshCw className="w-5 h-5 animate-spin" /> : <ClipboardList className="w-5 h-5" />}
+              {generatingAll ? 'Menyusun rencana...' : 'Buat Rencana Semua Siswa'}
             </button>
           </div>
         </>
