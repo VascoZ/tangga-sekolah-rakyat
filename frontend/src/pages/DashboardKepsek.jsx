@@ -5,9 +5,7 @@ import { tanggaApi } from '../lib/api'
 import { toRosterView } from '../lib/roster'
 import SidebarShell from '../components/SidebarShell'
 import TanggaLegend from '../components/TanggaLegend'
-
-const TANGGA_COLORS = ['badge-tangga-0', 'badge-tangga-1', 'badge-tangga-2', 'badge-tangga-3', 'badge-tangga-4', 'badge-tangga-5', 'badge-tangga-6']
-const TANGGA_LABELS = ['Belum Mengenal Huruf', 'Mengenal Huruf', 'Membaca Suku Kata', 'Membaca Kata', 'Membaca Kalimat', 'Baca Paragraf', 'Memahami Bacaan']
+import SebaranTable from '../components/SebaranTable'
 
 const NAV = [
   { to: '/kepsek', label: 'Dashboard', icon: BarChart3 },
@@ -25,7 +23,7 @@ function DashboardKepsek() {
   const [kemajuanKelas, setKemajuanKelas] = useState(null)
 
   useEffect(() => {
-    tanggaApi.getSekolah(SEKOLAH_ID).then(setDashboard).catch(() => setDashboard({ total_siswa: 0, sebaran_literasi: [], naik_minggu_ini: 0, stagnan_aktif: 0 }))
+    tanggaApi.getSekolah(SEKOLAH_ID).then(setDashboard).catch(() => setDashboard({ total_siswa: 0, sebaran_literasi: [], sebaran_numerasi: [], naik_minggu_ini: 0, stagnan_aktif: 0 }))
     tanggaApi.getStagnasi({ sekolah_id: SEKOLAH_ID }).then((list) =>
       setStagnanList([...list].sort((a, b) => b.pekan_stagnan - a.pekan_stagnan))
     ).catch(() => {})
@@ -49,7 +47,7 @@ function DashboardKepsek() {
     )
   }
 
-  const maxSebaran = Math.max(...dashboard.sebaran_literasi.map(d => d.jumlah), 1)
+  const toCounts = (list = []) => list.map((item) => item.jumlah)
 
   return (
     <SidebarShell navItems={NAV} roleLabel="Kepala Sekolah">
@@ -80,32 +78,23 @@ function DashboardKepsek() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl p-6 shadow-card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-semibold text-sr-900">Sebaran Tangga Literasi</h2>
-            <TanggaLegend jenis="LITERASI" />
+        {[
+          { jenis: 'LITERASI', list: dashboard.sebaran_literasi },
+          { jenis: 'NUMERASI', list: dashboard.sebaran_numerasi },
+        ].map(({ jenis, list }) => (
+          <div key={jenis} className="bg-white rounded-xl p-6 shadow-card">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="font-display font-semibold text-sr-900">Sebaran Tangga {jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'}</h2>
+              <TanggaLegend jenis={jenis} />
+            </div>
+            <SebaranTable jenis={jenis} counts={toCounts(list)} />
           </div>
-          <div className="space-y-2">
-            {dashboard.sebaran_literasi.map((item) => {
-              const barW = Math.max((item.jumlah / maxSebaran) * 100, 3)
-              return (
-                <div key={item.tangga} className="flex items-center gap-2">
-                  <span className={`inline-flex items-center justify-center w-8 h-6 rounded text-xs font-bold text-white ${TANGGA_COLORS[item.tangga]}`}>
-                    T{item.tangga}
-                  </span>
-                  <span className="w-28 text-xs text-sr-500 hidden xl:inline truncate">{TANGGA_LABELS[item.tangga]}</span>
-                  <div className="flex-1 h-5 bg-sr-100 rounded overflow-hidden">
-                    <div className={`h-full rounded ${TANGGA_COLORS[item.tangga]}`} style={{ width: `${barW}%`, transition: 'width 0.6s' }} />
-                  </div>
-                  <span className="w-6 text-right text-sm font-medium text-sr-700">{item.jumlah}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        ))}
+      </div>
 
+      <div className="grid lg:grid-cols-2 gap-6 mb-8">
         <div className="bg-white rounded-xl p-6 shadow-card">
-          <h2 className="font-display font-semibold text-sr-900 mb-4">Kemajuan per Kelas (naik ≥1 tingkat)</h2>
+          <h2 className="font-display font-semibold text-sr-900 mb-4">Kemajuan per Kelas (naik ≥1 tingkat literasi)</h2>
           {kemajuanKelas === null ? (
             <div className="text-sr-400 text-sm">Memuat...</div>
           ) : kemajuanKelas.map((k) => (
@@ -121,25 +110,25 @@ function DashboardKepsek() {
             </div>
           ))}
         </div>
-      </div>
 
-      <div className="bg-white rounded-xl p-6 shadow-card">
-        <h2 className="font-display font-semibold text-sr-900 mb-4 flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-orange-500" />
-          Siswa Perlu Perhatian ({stagnanList.length} siswa)
-        </h2>
-        {stagnanList.length === 0 && <p className="text-sm text-sr-400">Tidak ada siswa stagnan saat ini. 🎉</p>}
-        {stagnanList.map((s) => (
-          <div key={`${s.siswa_id}-${s.jenis}`} className="flex justify-between items-center gap-3 p-3 bg-orange-50 rounded-lg mb-2">
-            <div className="min-w-0">
-              <div className="font-medium text-sr-900 text-sm truncate">{s.siswa_kode} · {s.siswa_nama}</div>
-              <div className="text-xs text-sr-500">{s.jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'} T{s.tangga} · {s.pekan_stagnan} minggu</div>
+        <div className="bg-white rounded-xl p-6 shadow-card">
+          <h2 className="font-display font-semibold text-sr-900 mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-orange-500" />
+            Siswa Perlu Perhatian ({stagnanList.length} siswa)
+          </h2>
+          {stagnanList.length === 0 && <p className="text-sm text-sr-400">Tidak ada siswa stagnan saat ini. 🎉</p>}
+          {stagnanList.map((s) => (
+            <div key={`${s.siswa_id}-${s.jenis}`} className="flex justify-between items-center gap-3 p-3 bg-orange-50 rounded-lg mb-2">
+              <div className="min-w-0">
+                <div className="font-medium text-sr-900 text-sm truncate">{s.siswa_kode} · {s.siswa_nama}</div>
+                <div className="text-xs text-sr-500">{s.jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'} T{s.tangga} · {s.pekan_stagnan} minggu</div>
+              </div>
+              <Link to={`/guru/rencana?siswa=${s.siswa_kode}`} className="text-sm text-sr-700 hover:text-sr-900 font-medium px-3 py-1.5 bg-white rounded-lg border border-sr-200 flex-shrink-0">
+                Lihat Rencana
+              </Link>
             </div>
-            <Link to={`/guru/rencana?siswa=${s.siswa_kode}`} className="text-sm text-sr-700 hover:text-sr-900 font-medium px-3 py-1.5 bg-white rounded-lg border border-sr-200 flex-shrink-0">
-              Lihat Rencana
-            </Link>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </SidebarShell>
   )

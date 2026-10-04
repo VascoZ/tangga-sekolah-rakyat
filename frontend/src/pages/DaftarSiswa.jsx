@@ -9,8 +9,7 @@ import TanggaLegend from '../components/TanggaLegend'
 import EmptyState from '../components/EmptyState'
 import TanggaFilterBar, { matchesTanggaFilter, matchesSearch } from '../components/TanggaFilterBar'
 import { useToast } from '../components/ToastProvider'
-
-const TANGGA_COLORS = ['badge-tangga-0', 'badge-tangga-1', 'badge-tangga-2', 'badge-tangga-3', 'badge-tangga-4', 'badge-tangga-5', 'badge-tangga-6']
+import { TANGGA_BADGE_CLASS } from '../lib/tangga'
 
 function TambahSiswaModal({ kelasId, jenjang, onClose, onCreated }) {
   const toast = useToast()
@@ -69,6 +68,17 @@ function TambahSiswaModal({ kelasId, jenjang, onClose, onCreated }) {
   )
 }
 
+function LevelBadge({ tingkat, stagnan, naik }) {
+  if (tingkat === null) return <span className="text-sr-400 text-sm">Belum</span>
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`inline-block px-2 py-1 rounded text-xs font-medium text-white ${TANGGA_BADGE_CLASS[tingkat]}`}>T{tingkat}</span>
+      {naik > 0 && <span className="text-green-600 text-xs">▲{naik}</span>}
+      {stagnan > 0 && <span className="text-orange-600 text-xs flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" />{stagnan}mg</span>}
+    </div>
+  )
+}
+
 function DaftarSiswa() {
   const { user } = useAuthStore()
   const kelasId = user?.kelas?.id || 1
@@ -97,12 +107,13 @@ function DaftarSiswa() {
   }, [roster, search, filter])
 
   const sudahAsesmen = roster ? roster.filter(s => s.tanggaLit !== null).length : 0
-  const stagnanCount = roster ? roster.filter(s => s.stagnan > 0).length : 0
+  const sudahAsesmenNum = roster ? roster.filter(s => s.tanggaNum !== null).length : 0
+  const stagnanCount = roster ? roster.filter(s => s.stagnan > 0 || s.stagnanNum > 0).length : 0
 
   return (
     <GuruShell
       title="Daftar Siswa — Kelas A (SMA)"
-      subtitle={roster ? `${roster.length} siswa · ${sudahAsesmen} sudah asesmen · ${roster.length - sudahAsesmen} belum` : 'Memuat...'}
+      subtitle={roster ? `${roster.length} siswa · Literasi: ${sudahAsesmen} sudah asesmen · Numerasi: ${sudahAsesmenNum} sudah asesmen` : 'Memuat...'}
       right={
         <button
           onClick={() => setShowTambah(true)}
@@ -142,16 +153,15 @@ function DaftarSiswa() {
 
       {!loadError && roster !== null && filtered.length > 0 && (
         <>
-          {/* Desktop table */}
+          {/* Desktop table: literasi & numerasi dalam kolom terpisah */}
           <div className="hidden md:block bg-white rounded-xl shadow-card overflow-hidden">
             <table className="w-full">
               <thead className="bg-sr-50">
                 <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-600">Tangga</th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-sr-600">Nama</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-600">Num</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-600">Asesmen</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-600">Δ</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-900 border-l border-gray-200">📖 Literasi</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-900 border-l border-gray-200">🔢 Numerasi</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-sr-600 border-l border-gray-200">Asesmen Terakhir</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -159,39 +169,18 @@ function DaftarSiswa() {
                 {filtered.map((siswa) => (
                   <tr key={siswa.id} className="hover:bg-sr-50">
                     <td className="px-4 py-3">
-                      {siswa.tanggaLit !== null ? (
-                        <span className={`inline-block px-2 py-1 rounded text-xs font-medium text-white ${TANGGA_COLORS[siswa.tanggaLit]}`}>
-                          T{siswa.tanggaLit}
-                        </span>
-                      ) : (
-                        <span className="text-sr-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
                       <div className="font-medium text-sr-900">{siswa.nama}</div>
                       <div className="text-xs text-sr-400">{siswa.kode}</div>
-                      {siswa.stagnan > 0 && (
-                        <div className="text-xs text-orange-600 flex items-center gap-1 mt-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          {siswa.stagnan}mg stagnan
-                        </div>
-                      )}
                     </td>
-                    <td className="px-4 py-3">
-                      {siswa.tanggaNum !== null ? (
-                        <span className="text-sm text-sr-600">T{siswa.tanggaNum}</span>
-                      ) : (
-                        <span className="text-sr-400">—</span>
-                      )}
+                    <td className="px-4 py-3 border-l border-gray-100">
+                      <LevelBadge tingkat={siswa.tanggaLit} stagnan={siswa.stagnan} naik={siswa.naik} />
                     </td>
-                    <td className="px-4 py-3 text-sm text-sr-500">
-                      {siswa.terakhir || 'Belum'}
+                    <td className="px-4 py-3 border-l border-gray-100">
+                      <LevelBadge tingkat={siswa.tanggaNum} stagnan={siswa.stagnanNum} naik={siswa.naikNum} />
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      {siswa.naik > 0 && <span className="text-green-600">▲{siswa.naik} lit</span>}
-                      {siswa.naikNum > 0 && <span className="text-green-600 ml-2">▲{siswa.naikNum} num</span>}
-                      {siswa.stagnan > 0 && <span className="text-orange-600 ml-2">⚠{siswa.stagnan} lit</span>}
-                      {siswa.stagnanNum > 0 && <span className="text-orange-600 ml-2">⚠{siswa.stagnanNum} num</span>}
+                    <td className="px-4 py-3 text-sm text-sr-500 border-l border-gray-100">
+                      <div>Lit: {siswa.terakhir ? `${siswa.terakhir} lalu` : 'Belum'}</div>
+                      <div>Num: {siswa.terakhirNum ? `${siswa.terakhirNum} lalu` : 'Belum'}</div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link to={`/guru/rencana?siswa=${siswa.kode}`} className="text-xs text-sr-700 hover:text-sr-900 font-medium">
@@ -208,35 +197,26 @@ function DaftarSiswa() {
           <div className="md:hidden space-y-3">
             {filtered.map((siswa) => (
               <div key={siswa.id} className="bg-white rounded-xl shadow-card p-4">
-                <div className="flex justify-between items-start gap-3">
+                <div className="flex justify-between items-start gap-3 mb-3">
                   <div className="min-w-0">
                     <div className="font-medium text-sr-900 truncate">{siswa.nama}</div>
                     <div className="text-xs text-sr-400">{siswa.kode}</div>
                   </div>
-                  {siswa.tanggaLit !== null ? (
-                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium text-white flex-shrink-0 ${TANGGA_COLORS[siswa.tanggaLit]}`}>
-                      T{siswa.tanggaLit}
-                    </span>
-                  ) : (
-                    <span className="text-sr-400 text-xs flex-shrink-0">Belum asesmen</span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between mt-3 text-xs text-sr-500">
-                  <span>Num: {siswa.tanggaNum !== null ? `T${siswa.tanggaNum}` : '—'}</span>
-                  <span>{siswa.terakhir ? `Asesmen ${siswa.terakhir} lalu` : 'Belum asesmen'}</span>
-                </div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    {siswa.naik > 0 && <span className="text-green-600 font-medium">▲ Naik {siswa.naik}</span>}
-                    {siswa.stagnan > 0 && (
-                      <span className="text-orange-600 font-medium flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" /> {siswa.stagnan}mg stagnan
-                      </span>
-                    )}
-                  </div>
-                  <Link to={`/guru/rencana?siswa=${siswa.kode}`} className="text-xs text-sr-700 hover:text-sr-900 font-medium">
+                  <Link to={`/guru/rencana?siswa=${siswa.kode}`} className="text-xs text-sr-700 hover:text-sr-900 font-medium flex-shrink-0">
                     Rencana →
                   </Link>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-sr-50 rounded-lg p-2">
+                    <div className="text-sr-500 mb-1">📖 Literasi</div>
+                    <LevelBadge tingkat={siswa.tanggaLit} stagnan={siswa.stagnan} naik={siswa.naik} />
+                    <div className="text-sr-400 mt-1">{siswa.terakhir ? `${siswa.terakhir} lalu` : 'Belum asesmen'}</div>
+                  </div>
+                  <div className="bg-sr-50 rounded-lg p-2">
+                    <div className="text-sr-500 mb-1">🔢 Numerasi</div>
+                    <LevelBadge tingkat={siswa.tanggaNum} stagnan={siswa.stagnanNum} naik={siswa.naikNum} />
+                    <div className="text-sr-400 mt-1">{siswa.terakhirNum ? `${siswa.terakhirNum} lalu` : 'Belum asesmen'}</div>
+                  </div>
                 </div>
               </div>
             ))}
@@ -246,7 +226,7 @@ function DaftarSiswa() {
 
       {roster !== null && stagnanCount > 0 && (
         <div className="mt-4 text-center text-sm text-sr-500">
-          ⚠ {roster.length - sudahAsesmen} siswa belum asesmen · {stagnanCount} siswa stagnan
+          ⚠ {stagnanCount} siswa stagnan di salah satu tangga
         </div>
       )}
 

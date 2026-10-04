@@ -6,9 +6,7 @@ import { toRosterView } from '../lib/roster'
 import { ClipboardCheck, LayoutGrid, BookOpen, MessageCircle, AlertTriangle, BarChart3, Search } from 'lucide-react'
 import GuruShell from '../components/GuruShell'
 import TanggaLegend from '../components/TanggaLegend'
-
-const TANGGA_COLORS = ['badge-tangga-0', 'badge-tangga-1', 'badge-tangga-2', 'badge-tangga-3', 'badge-tangga-4', 'badge-tangga-5', 'badge-tangga-6']
-const TANGGA_LABELS = ['Belum Huruf', 'Mengenal Huruf', 'Suku Kata', 'Kata Utuh', 'Kalimat', 'Paragraf', 'Paham Bacaan']
+import SebaranTable from '../components/SebaranTable'
 
 function DashboardGuru() {
   const navigate = useNavigate()
@@ -26,11 +24,12 @@ function DashboardGuru() {
   }, [kelasId])
 
   const stats = useMemo(() => {
-    if (!roster) return { totalSiswa: 0, sudahAsesmen: 0, naikMingguIni: 0, stagnasiAktif: 0 }
+    if (!roster) return { totalSiswa: 0, sudahAsesmen: 0, sudahAsesmenNum: 0, naikMingguIni: 0, stagnasiAktif: 0 }
     return {
       totalSiswa: roster.length,
       sudahAsesmen: roster.filter(s => s.tanggaLit !== null).length,
-      naikMingguIni: roster.filter(s => s.naik > 0).length,
+      sudahAsesmenNum: roster.filter(s => s.tanggaNum !== null).length,
+      naikMingguIni: roster.filter(s => s.naik > 0 || s.naikNum > 0).length,
       stagnasiAktif: new Set(stagnasiList.map(s => s.siswa_id)).size,
     }
   }, [roster, stagnasiList])
@@ -44,12 +43,18 @@ function DashboardGuru() {
     }
   }, [roster])
 
-  const sebaranTangga = useMemo(() => {
-    const counts = {}
-    for (let i = 0; i <= 6; i++) counts[i] = (roster || []).filter(s => s.tanggaLit === i).length
-    const belum = (roster || []).filter(s => s.tanggaLit === null).length
-    const maxCount = Math.max(...Object.values(counts), belum, 1)
-    return { counts, belum, maxCount }
+  const sebaran = useMemo(() => {
+    const hitung = (key, n) => Array.from({ length: n }, (_, i) => (roster || []).filter(s => s[key] === i).length)
+    return {
+      LITERASI: {
+        counts: hitung('tanggaLit', 7),
+        belum: (roster || []).filter(s => s.tanggaLit === null).length,
+      },
+      NUMERASI: {
+        counts: hitung('tanggaNum', 6),
+        belum: (roster || []).filter(s => s.tanggaNum === null).length,
+      },
+    }
   }, [roster])
 
   const belumAsesmen = useMemo(() => (roster || []).filter(s => s.tanggaLit === null), [roster])
@@ -81,7 +86,8 @@ function DashboardGuru() {
         </div>
         <div className="bg-white rounded-xl p-4 shadow-card">
           <div className="text-3xl font-bold text-sr-900">{stats.sudahAsesmen}</div>
-          <div className="text-sr-500 text-sm">Sudah Asesmen</div>
+          <div className="text-sr-500 text-sm">Sudah Asesmen Literasi</div>
+          <div className="text-xs text-sr-400 mt-1">Numerasi: {stats.sudahAsesmenNum}</div>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-card">
           <div className="text-3xl font-bold text-green-600">{stats.naikMingguIni} ▲</div>
@@ -111,7 +117,7 @@ function DashboardGuru() {
         </form>
         {belumAsesmen.length > 0 && (
           <p className="text-sr-500 text-sm mb-4">
-            {belumAsesmen.length} siswa belum asesmen:{' '}
+            {belumAsesmen.length} siswa belum asesmen literasi:{' '}
             {belumAsesmen.map(s => `${s.kode} ${s.nama}`).join(', ')}
           </p>
         )}
@@ -129,7 +135,7 @@ function DashboardGuru() {
         <div className="bg-white rounded-xl p-6 shadow-card">
           <h2 className="font-display text-lg font-semibold text-sr-900 mb-4 flex items-center gap-2">
             <LayoutGrid className="w-5 h-5" />
-            Kelompok Aktif
+            Kelompok Aktif (Literasi)
           </h2>
           <div className="space-y-3">
             <div className="flex justify-between items-center p-3 bg-tangga-0 bg-opacity-10 rounded-lg">
@@ -187,41 +193,20 @@ function DashboardGuru() {
         </div>
       </div>
 
-      {/* Sebaran Tangga */}
-      <div className="bg-white rounded-xl p-6 shadow-card mb-6">
-        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-          <h2 className="font-display text-lg font-semibold text-sr-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5" />
-            Tangga Literasi — Kelas A (SMA)
-          </h2>
-          <TanggaLegend jenis="LITERASI" />
-        </div>
-        <p className="text-xs text-sr-400 mb-4">
-          {sebaranTangga.belum} siswa belum asesmen
-        </p>
-        <div className="space-y-1.5">
-          {[6, 5, 4, 3, 2, 1, 0].map((t) => {
-            const count = sebaranTangga.counts[t]
-            const pct = stats.totalSiswa ? Math.round((count / stats.totalSiswa) * 100) : 0
-            const barW = Math.max((count / sebaranTangga.maxCount) * 100, 2)
-            return (
-              <div key={t} className="flex items-center gap-2 text-sm">
-                <span className={`inline-flex items-center justify-center w-8 h-6 rounded text-xs font-bold text-white flex-shrink-0 ${TANGGA_COLORS[t]}`}>
-                  T{t}
-                </span>
-                <span className="w-20 text-sr-500 flex-shrink-0 hidden sm:inline">{TANGGA_LABELS[t]}</span>
-                <div className="flex-1 h-5 bg-sr-100 rounded overflow-hidden">
-                  <div
-                    className={`h-full rounded ${TANGGA_COLORS[t]}`}
-                    style={{ width: `${barW}%`, transition: 'width 0.6s ease-out' }}
-                  />
-                </div>
-                <span className="w-8 text-right font-medium text-sr-700">{count}</span>
-                <span className="w-8 text-right text-xs text-sr-400 hidden sm:inline">{pct}%</span>
-              </div>
-            )
-          })}
-        </div>
+      {/* Sebaran Tangga — literasi & numerasi dipisah */}
+      <div className="grid lg:grid-cols-2 gap-6 mb-6">
+        {['LITERASI', 'NUMERASI'].map((jenis) => (
+          <div key={jenis} className="bg-white rounded-xl p-6 shadow-card">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+              <h2 className="font-display text-lg font-semibold text-sr-900 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Tangga {jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'} — Kelas A (SMA)
+              </h2>
+              <TanggaLegend jenis={jenis} />
+            </div>
+            <SebaranTable jenis={jenis} counts={sebaran[jenis].counts} belum={sebaran[jenis].belum} />
+          </div>
+        ))}
       </div>
 
       {/* Stagnasi Warning */}

@@ -399,10 +399,24 @@ async def get_agregat(
     total_siswa = (await db.execute(select(func.count(Siswa.id)))).scalar() or 0
     total_guru = (await db.execute(select(func.count(Guru.id)))).scalar() or 0
 
+    result = await db.execute(select(PosisiTangga))
+    posisi_rows = result.scalars().all()
+    sebaran_lit = [0] * len(TANGGA_LITERASI)
+    sebaran_num = [0] * len(TANGGA_NUMERASI)
+    for p in posisi_rows:
+        if p.tangga_literasi is not None and 0 <= p.tangga_literasi < len(sebaran_lit):
+            sebaran_lit[p.tangga_literasi] += 1
+        if p.tangga_numerasi is not None and 0 <= p.tangga_numerasi < len(sebaran_num):
+            sebaran_num[p.tangga_numerasi] += 1
+
     return {
         "total_sekolah": total_sekolah,
         "total_siswa": total_siswa,
         "total_guru": total_guru,
+        "sudah_asesmen_literasi": sum(sebaran_lit),
+        "sudah_asesmen_numerasi": sum(sebaran_num),
+        "sebaran_literasi": [{"tingkat": i, "jumlah": n} for i, n in enumerate(sebaran_lit)],
+        "sebaran_numerasi": [{"tingkat": i, "jumlah": n} for i, n in enumerate(sebaran_num)],
         "rerata_waktu_naik_tangga": 2.5,
         "persen_keluar_tangga_02": 65.0,
     }

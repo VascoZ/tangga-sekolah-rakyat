@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { TrendingUp, BarChart3, MapPin } from 'lucide-react'
 import { tanggaApi } from '../lib/api'
 import SidebarShell from '../components/SidebarShell'
+import SebaranTable from '../components/SebaranTable'
+import TanggaLegend from '../components/TanggaLegend'
 
 const NAV = [
   { to: '/pengelola', label: 'Agregat', icon: BarChart3 },
@@ -22,6 +24,23 @@ function PengelolaAnalitik() {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-8 text-sm text-blue-800">
         ⓘ Proyeksi <strong>ilustratif</strong> skala nasional — pilot saat ini baru berjalan di {agregat?.total_sekolah ?? '—'} sekolah,
         lihat Kelas A di menu Kepsek untuk data sungguhan.
+      </div>
+
+      {/* Sebaran nyata: literasi & numerasi dipisah */}
+      <div className="grid lg:grid-cols-2 gap-6 mb-8">
+        {[
+          { jenis: 'LITERASI', list: agregat?.sebaran_literasi, sudah: agregat?.sudah_asesmen_literasi },
+          { jenis: 'NUMERASI', list: agregat?.sebaran_numerasi, sudah: agregat?.sudah_asesmen_numerasi },
+        ].map(({ jenis, list, sudah }) => (
+          <div key={jenis} className="bg-white rounded-xl p-6 shadow-card">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+              <h2 className="font-display font-semibold text-sr-900">Sebaran Tangga {jenis === 'NUMERASI' ? 'Numerasi' : 'Literasi'} Nasional (Pilot)</h2>
+              <TanggaLegend jenis={jenis} />
+            </div>
+            <p className="text-xs text-sr-400 mb-4">{sudah ?? 0} siswa sudah asesmen · data nyata dari database</p>
+            <SebaranTable jenis={jenis} counts={(list || []).map((x) => x.jumlah)} />
+          </div>
+        ))}
       </div>
 
       {/* Trend Chart */}

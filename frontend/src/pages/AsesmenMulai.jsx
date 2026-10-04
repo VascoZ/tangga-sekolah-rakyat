@@ -80,17 +80,23 @@ function AsesmenMulai() {
                     <div className="font-medium text-sr-900">{siswa.nama}</div>
                     <div className="text-sm text-sr-500">{siswa.kode}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm">
-                      <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                  <div className="text-right space-y-1">
+                    <div className="flex justify-end gap-1.5 text-xs">
+                      <span className={`inline-block px-2 py-1 rounded font-medium ${
                         siswa.stagnan ? 'bg-orange-100 text-orange-700' : 'bg-sr-100 text-sr-700'
                       }`}>
-                        {siswa.stagnan && '⚠ '}
-                        T{siswa.tanggaLit ?? '?'} Lit
+                        {siswa.stagnan ? '⚠ ' : ''}Lit {siswa.tanggaLit !== null ? `T${siswa.tanggaLit}` : '—'}
+                      </span>
+                      <span className={`inline-block px-2 py-1 rounded font-medium ${
+                        siswa.stagnanNum ? 'bg-orange-100 text-orange-700' : 'bg-sr-100 text-sr-700'
+                      }`}>
+                        {siswa.stagnanNum ? '⚠ ' : ''}Num {siswa.tanggaNum !== null ? `T${siswa.tanggaNum}` : '—'}
                       </span>
                     </div>
-                    <div className="text-xs text-sr-400 mt-1">
-                      {siswa.terakhir ? `${siswa.terakhir} lalu` : 'Belum asesmen'}
+                    <div className="text-xs text-sr-400">
+                      {siswa.terakhir ? `Lit ${siswa.terakhir} lalu` : 'Lit belum asesmen'}
+                      {' · '}
+                      {siswa.terakhirNum ? `Num ${siswa.terakhirNum} lalu` : 'Num belum asesmen'}
                     </div>
                   </div>
                 </div>

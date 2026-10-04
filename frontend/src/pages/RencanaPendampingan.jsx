@@ -148,11 +148,14 @@ function RencanaPendampingan() {
                     {s.stagnan > 0 && <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">⚠</span>}
                   </div>
                   <div className="text-xs text-sr-500">{s.kode.replace('SR-001-', 'SR-')}</div>
-                  {(jenis === 'NUMERASI' ? s.tanggaNum : s.tanggaLit) !== null && (
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs text-white ${TANGGA_COLORS_BG[jenis === 'NUMERASI' ? s.tanggaNum : s.tanggaLit]}`}>
-                      T{jenis === 'NUMERASI' ? s.tanggaNum : s.tanggaLit}
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs text-white ${s.tanggaLit !== null ? TANGGA_COLORS_BG[s.tanggaLit] : 'bg-sr-300'}`}>
+                      Lit {s.tanggaLit !== null ? `T${s.tanggaLit}` : '—'}
                     </span>
-                  )}
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs text-white ${s.tanggaNum !== null ? TANGGA_COLORS_BG[s.tanggaNum] : 'bg-sr-300'}`}>
+                      Num {s.tanggaNum !== null ? `T${s.tanggaNum}` : '—'}
+                    </span>
+                  </div>
                 </button>
                 ))}
               </div>
