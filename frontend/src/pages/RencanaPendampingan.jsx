@@ -45,7 +45,7 @@ function RencanaPendampingan() {
   }, [roster, kodeSearch])
 
   const loadRencana = (siswaId) => {
-    rencanaApi.getBySiswa(siswaId).then((list) => {
+    rencanaApi.getBySiswa(siswaId, jenis).then((list) => {
       setRencanaHistory(list)
       const aktif = list[0] || null
       setChecklist(aktif ? aktif.kegiatan.map((k, i) => (k.selesai ? i : -1)).filter(i => i >= 0) : [])
@@ -58,6 +58,13 @@ function RencanaPendampingan() {
     setRencanaHistory(null)
     loadRencana(siswa.id)
   }
+
+  useEffect(() => {
+    if (!selectedSiswa) return
+    setRencanaHistory(null)
+    loadRencana(selectedSiswa.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jenis])
 
   const rencana = rencanaHistory?.[0] || null
 

@@ -128,22 +128,29 @@ async def generate_rencana(
     rencana_data = generate_rencana_ai(siswa.kode, tangga_saat_ini, target_tangga, data.jenis)
 
     result = await db.execute(
-        select(func.max(RencanaPendampingan.minggu_ke)).where(RencanaPendampingan.siswa_id == data.siswa_id)
+        select(RencanaPendampingan)
+        .where(RencanaPendampingan.siswa_id == data.siswa_id, RencanaPendampingan.jenis == data.jenis)
+        .order_by(RencanaPendampingan.id)
     )
-    minggu_ke = (result.scalar() or 0) + 1
+    existing = result.scalars().all()
 
     today = datetime.utcnow()
-    rencana = RencanaPendampingan(
-        siswa_id=data.siswa_id,
-        minggu_ke=minggu_ke,
-        tgl_mulai=today,
-        tgl_selesai=today + timedelta(days=6),
-        kegiatan_json=rencana_data["kegiatan"],
-        target_tangga=rencana_data["target_tangga"],
-        indikator=rencana_data["indikator"],
-        checklist_json=[],
-    )
-    db.add(rencana)
+    if existing:
+        rencana = existing[0]
+        for extra in existing[1:]:
+            await db.delete(extra)
+    else:
+        rencana = RencanaPendampingan(siswa_id=data.siswa_id, jenis=data.jenis, minggu_ke=1)
+        db.add(rencana)
+
+    rencana.tgl_mulai = today
+    rencana.tgl_selesai = today + timedelta(days=6)
+    rencana.kegiatan_json = rencana_data["kegiatan"]
+    rencana.target_tangga = rencana_data["target_tangga"]
+    rencana.indikator = rencana_data["indikator"]
+    rencana.checklist_json = []
+    rencana.catatan_guru = None
+
     await db.commit()
     await db.refresh(rencana)
 
@@ -179,21 +186,21 @@ async def update_rencana(
 @router.get("/siswa/{siswa_id}", response_model=List[RencanaPendampinganResponse])
 async def get_rencana_siswa(
     siswa_id: int,
+    jenis: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Mendapatkan riwayat rencana pendampingan untuk siswa.
+    Mendapatkan rencana pendampingan untuk siswa, opsional per jenis (literasi/numerasi).
     """
     result = await db.execute(select(Siswa).where(Siswa.id == siswa_id))
     siswa = result.scalar_one_or_none()
     if not siswa:
         raise HTTPException(status_code=404, detail="Siswa tidak ditemukan")
 
-    result = await db.execute(
-        select(RencanaPendampingan)
-        .where(RencanaPendampingan.siswa_id == siswa_id)
-        .order_by(RencanaPendampingan.minggu_ke.desc())
-    )
+    query = select(RencanaPendampingan).where(RencanaPendampingan.siswa_id == siswa_id)
+    if jenis:
+        query = query.where(RencanaPendampingan.jenis == jenis)
+    result = await db.execute(query.order_by(RencanaPendampingan.id.desc()))
     return [_to_response(r, siswa.kode) for r in result.scalars().all()]
 
 

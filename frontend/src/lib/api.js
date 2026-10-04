@@ -109,8 +109,8 @@ export const rencanaApi = {
   generate: (siswaId, jenis = 'LITERASI') =>
     fetchApi('/rencana/generate', { method: 'POST', body: JSON.stringify({ siswa_id: siswaId, jenis }) }),
 
-  getBySiswa: (siswaId) =>
-    fetchApi(`/rencana/siswa/${siswaId}`),
+  getBySiswa: (siswaId, jenis = 'LITERASI') =>
+    fetchApi(`/rencana/siswa/${siswaId}?jenis=${jenis}`),
 
   getByKelas: (kelasId, mingguKe = null) => {
     const query = mingguKe ? `?minggu_ke=${mingguKe}` : ''

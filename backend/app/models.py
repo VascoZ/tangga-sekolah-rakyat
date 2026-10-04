@@ -150,6 +150,7 @@ class RencanaPendampingan(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     siswa_id = Column(Integer, ForeignKey("siswa.id"))
+    jenis = Column(String(10), default="LITERASI", server_default="LITERASI")
     minggu_ke = Column(Integer)
     tgl_mulai = Column(DateTime)
     tgl_selesai = Column(DateTime)
